@@ -48,27 +48,27 @@ class XiaohongshuParser
      */
     private function request($url, $customHeaders = [], $returnHeader = false)
     {
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $ch = svCurlInit();
+        svCurlSetopt($ch, CURLOPT_URL, $url);
+        svCurlSetopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        svCurlSetopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        svCurlSetopt($ch, CURLOPT_RETURNTRANSFER, true);
+        svCurlSetopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        svCurlSetopt($ch, CURLOPT_ENCODING, 'gzip,deflate');
+        svCurlSetopt($ch, CURLOPT_TIMEOUT, 10);
 
         $headers = array_merge($this->headers, $customHeaders);
         if ($this->cookie) {
-            curl_setopt($ch, CURLOPT_COOKIE, $this->cookie);
+            svCurlSetopt($ch, CURLOPT_COOKIE, $this->cookie);
         }
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        svCurlSetopt($ch, CURLOPT_HTTPHEADER, $headers);
 
         if ($returnHeader) {
-            curl_setopt($ch, CURLOPT_HEADER, true);
-            curl_setopt($ch, CURLOPT_NOBODY, true);
+            svCurlSetopt($ch, CURLOPT_HEADER, true);
+            svCurlSetopt($ch, CURLOPT_NOBODY, true);
         }
 
-        $response = curl_exec($ch);
+        $response = svCurlExec($ch);
         $error = curl_error($ch);
         curl_close($ch);
 
@@ -79,11 +79,10 @@ class XiaohongshuParser
     }
 
     /**
-     * 获取重定向后的真实链接
+     * 通过 GET 不跟随跳转获取单次 Location 重定向地址
      */
-    private function getRealUrl($url)
+    private function resolveRedirectLocation($url)
     {
-        // 方案一：优先使用 get_headers，因为它能处理某些 cURL 无法处理的 302 跳转
         // 设置 User-Agent 模拟浏览器
         stream_context_set_default([
             'http' => [
@@ -92,8 +91,8 @@ class XiaohongshuParser
             ]
         ]);
 
-        // 抑制错误输出，防止域名无法解析时报错
-        $headers = @get_headers($url, 1);
+        // 抑制错误输出，防止域名无法解析或连接超时时报错
+        $headers = @svGetHeaders($url, 1);
 
         if (isset($headers['Location'])) {
             $location = $headers['Location'];
@@ -111,19 +110,63 @@ class XiaohongshuParser
             return $location;
         }
 
-        // 方案二：如果 get_headers 失败，尝试 cURL 作为备选
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $url);
-        curl_setopt($ch, CURLOPT_USERAGENT, $this->userAgent);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_HEADER, true);
-        curl_setopt($ch, CURLOPT_NOBODY, true); // 只需要头信息
-        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+        return null;
+    }
 
-        curl_exec($ch);
+    /**
+     * 构造小红书海外官方短链网关备用地址（海外服务器直连 xhslink.cn/xhslink.com 可能超时）
+     */
+    private function buildRednoteShortUrl($url)
+    {
+        $parts = parse_url($url);
+        $host = strtolower($parts['host'] ?? '');
+        if (!in_array($host, ['xhslink.cn', 'www.xhslink.cn', 'xhslink.com', 'www.xhslink.com'], true)) {
+            return null;
+        }
+        $path = $parts['path'] ?? '/';
+        $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+        return 'https://r.rednote.com' . $path . $query;
+    }
+
+    /**
+     * 获取重定向后的真实链接
+     */
+    private function getRealUrl($url)
+    {
+        // 方案一：优先使用 svGetHeaders（GET 不自动跟随跳转），xhslink.* 超时或无 ID 时自动回退到 r.rednote.com
+        $fallback = $this->buildRednoteShortUrl($url);
+        $candidates = [$url];
+        if ($fallback && $fallback !== $url) {
+            $candidates[] = $fallback;
+        }
+
+        $firstLocation = null;
+        foreach ($candidates as $candidate) {
+            $location = $this->resolveRedirectLocation($candidate);
+            if ($location) {
+                if ($this->extractId($location)) {
+                    return $location;
+                }
+                if ($firstLocation === null) {
+                    $firstLocation = $location;
+                }
+            }
+        }
+        if ($firstLocation !== null) {
+            return $firstLocation;
+        }
+
+        // 方案二：如果方案一失败，尝试 cURL GET 跟随跳转作为备选（部分短链如 xhslink.cn 拒绝 HEAD）
+        $ch = svCurlInit();
+        svCurlSetopt($ch, CURLOPT_URL, $fallback ?: $url);
+        svCurlSetopt($ch, CURLOPT_USERAGENT, $this->userAgent);
+        svCurlSetopt($ch, CURLOPT_RETURNTRANSFER, true);
+        svCurlSetopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        svCurlSetopt($ch, CURLOPT_TIMEOUT, 10);
+        svCurlSetopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        svCurlSetopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+
+        svCurlExec($ch);
         $realUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         curl_close($ch);
 
@@ -162,12 +205,11 @@ class XiaohongshuParser
         // 某些情况下分享链接可能是 xhs.com，直接访问可能无法正确跳转，需转换为 xhslink.com
         $url = str_replace('xhs.com', 'xhslink.com', $url);
 
-        // 处理链接逻辑：参考 xhsjx.php
-        $domain = parse_url($url, PHP_URL_HOST);
-        if ($domain == 'www.xiaohongshu.com') {
-            $id = $this->extractId($url);
-        } else {
-            // 如果不是主域名，则认为是短链接或需要重定向的链接
+        // 处理链接逻辑：主域名且能提取到笔记 ID 时直接解析，否则走短链/重定向还原
+        $domain = strtolower((string)parse_url($url, PHP_URL_HOST));
+        $mainDomains = ['www.xiaohongshu.com', 'xiaohongshu.com', 'm.xiaohongshu.com', 'www.rednote.com', 'rednote.com', 'm.rednote.com'];
+        $id = $this->extractId($url);
+        if (!$id || !in_array($domain, $mainDomains, true)) {
             $url = $this->getRealUrl($url);
             $id = $this->extractId($url);
         }

@@ -1,0 +1,2 @@
+# Last stable release available for the server's Python 3.10 runtime.
+yt-dlp[default]==2026.10.21

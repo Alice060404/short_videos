@@ -1,0 +1,229 @@
+@import "tailwindcss";
+
+/* ==========================================================
+   Design tokens — 颜色、字体、间距统一由 CSS 变量管理
+   ========================================================== */
+:root {
+  --bg: #f7f7f5;
+  --fg: #171717;
+  --muted: #777777;
+  --line: #e5e5e3;
+  --surface: #efefec;
+  --accent: #9a7b4f;      /* 低饱和赭石 */
+  --danger: #b4483c;
+
+  --wrap-max: 1440px;
+  --gutter: 1.25rem;
+  --section-y: clamp(6rem, 14vw, 12rem);
+  --nav-h: 84px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --font-sans-stack: var(--font-geist), "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-serif-stack: var(--font-noto-serif), "Source Han Serif SC", "Songti SC", "STSong", serif;
+  --font-mono-stack: var(--font-geist-mono), ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg: #111111;
+  --fg: #f2f2f0;
+  --muted: #999999;
+  --line: #303030;
+  --surface: #1a1a19;
+  --accent: #c2a272;
+  --danger: #d9776b;
+  color-scheme: dark;
+}
+
+@media (min-width: 768px) {
+  :root { --gutter: 1.5rem; }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-surface: var(--surface);
+  --color-accent: var(--accent);
+  --color-danger: var(--danger);
+
+  --font-sans: var(--font-sans-stack);
+  --font-serif: var(--font-serif-stack);
+  --font-mono: var(--font-mono-stack);
+}
+
+/* ==========================================================
+   Base
+   ========================================================== */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans-stack);
+  font-feature-settings: "palt" 1;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: var(--accent); color: var(--bg); }
+
+:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; }
+
+/* 主题切换时的柔和颜色过渡（只在切换瞬间启用，避免影响其他动画） */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 600ms var(--ease-out), color 600ms var(--ease-out),
+    border-color 600ms var(--ease-out), fill 600ms var(--ease-out) !important;
+}
+
+/* ==========================================================
+   Layout primitives
+   ========================================================== */
+@utility wrap {
+  width: 100%;
+  max-width: var(--wrap-max);
+  margin-inline: auto;
+  padding-inline: clamp(1.25rem, 4vw, 4rem);
+}
+
+@utility grid-12 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: var(--gutter);
+  @media (min-width: 768px) {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+}
+
+@utility section-y {
+  padding-block: var(--section-y);
+}
+
+/* ==========================================================
+   Typography scale
+   ========================================================== */
+@utility t-hero {
+  font-family: var(--font-serif-stack);
+  font-weight: 600;
+  font-size: clamp(3.5rem, 8vw, 8rem);
+  line-height: 1.08;
+  letter-spacing: 0.04em;
+}
+
+@utility t-section {
+  font-family: var(--font-serif-stack);
+  font-weight: 600;
+  font-size: clamp(2.5rem, 5vw, 5rem);
+  line-height: 1.15;
+  letter-spacing: 0.03em;
+}
+
+@utility t-card {
+  font-family: var(--font-serif-stack);
+  font-weight: 600;
+  font-size: clamp(1.5rem, 2.2vw, 2rem);
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+}
+
+@utility t-label {
+  font-family: var(--font-mono-stack);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@utility t-num {
+  font-family: var(--font-mono-stack);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+/* ==========================================================
+   Controls
+   ========================================================== */
+@utility btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  height: 3rem;
+  padding-inline: 1.75rem;
+  border-radius: 999px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 0.875rem;
+  letter-spacing: 0.12em;
+  transition: background-color 400ms var(--ease-out), color 400ms var(--ease-out);
+  &:hover { background: var(--accent); }
+  &:disabled { opacity: 0.6; cursor: progress; }
+  & svg { transition: transform 400ms var(--ease-out); }
+  &:hover svg { transform: translateX(4px); }
+}
+
+@utility link-quiet {
+  position: relative;
+  font-size: 0.875rem;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  transition: color 300ms var(--ease-out);
+  &::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -4px;
+    height: 1px;
+    background: currentColor;
+    transform: scaleX(0);
+    transform-origin: right;
+    transition: transform 400ms var(--ease-out);
+  }
+  &:hover { color: var(--fg); }
+  &:hover::after { transform: scaleX(1); transform-origin: left; }
+}
+
+/* 圆形线框箭头按钮（列表行尾） */
+@utility arrow-dot {
+  display: inline-grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--fg);
+  transition: background-color 400ms var(--ease-out), border-color 400ms var(--ease-out),
+    color 400ms var(--ease-out), transform 400ms var(--ease-out);
+}
+
+@keyframes scroll-cue {
+  0% { transform: scaleY(0); transform-origin: top; }
+  45% { transform: scaleY(1); transform-origin: top; }
+  55% { transform: scaleY(1); transform-origin: bottom; }
+  100% { transform: scaleY(0); transform-origin: bottom; }
+}
+.scroll-cue { animation: scroll-cue 2.4s var(--ease-out) infinite; }
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+.indeterminate { animation: indeterminate 1.2s var(--ease-out) infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-cue, .indeterminate { animation: none; }
+}

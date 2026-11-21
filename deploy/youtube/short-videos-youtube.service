@@ -1,0 +1,40 @@
+[Unit]
+Description=Short Videos YouTube metadata parser
+Wants=network-online.target
+After=network-online.target short-videos-youtube-egress.service
+Requires=short-videos-youtube-egress.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=svyoutube
+Group=svyoutube
+WorkingDirectory=/opt/short-videos-youtube/current
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/short-videos-youtube/current/venv/bin/python /opt/short-videos-youtube/current/service.py
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+KillMode=control-group
+MemoryMax=512M
+CPUQuota=100%
+TasksMax=64
+LimitNOFILE=256
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

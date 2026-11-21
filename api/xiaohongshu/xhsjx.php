@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/../lib/entry_guard.php';
 /**
  * @Author: JH-Ahua
  * @CreateTime: 2026/1/19 下午8:58

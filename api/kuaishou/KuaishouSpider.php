@@ -261,8 +261,8 @@ class KuaishouSpider
 
     private function getRedirectedUrl(string $url): ?string
     {
-        $ch = curl_init();
-        curl_setopt_array($ch, [
+        $ch = svCurlInit();
+        svCurlSetoptArray($ch, [
             CURLOPT_URL => $url,
             CURLOPT_NOBODY => true,
             CURLOPT_FOLLOWLOCATION => true,
@@ -272,7 +272,7 @@ class KuaishouSpider
             CURLOPT_USERAGENT => $this->userAgent,
             CURLOPT_TIMEOUT => $this->timeout
         ]);
-        curl_exec($ch);
+        svCurlExec($ch);
         $finalUrl = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         if (curl_errno($ch)) {
             $finalUrl = null;
@@ -300,8 +300,8 @@ class KuaishouSpider
             'Cookie: ' . $this->cookie
         ];
 
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $ch = svCurlInit($url);
+        svCurlSetoptArray($ch, [
             CURLOPT_HEADER => false,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_RETURNTRANSFER => true,
@@ -311,7 +311,7 @@ class KuaishouSpider
             CURLOPT_USERAGENT => $this->userAgent,
             CURLOPT_HTTPHEADER => $headers
         ]);
-        $response = curl_exec($ch);
+        $response = svCurlExec($ch);
         curl_close($ch);
         return $response;
     }

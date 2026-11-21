@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/lib/entry_guard.php';
 /**
  * @Author: JH-Ahua
  * @CreateTime: 2025/10/24 下午10:37
@@ -86,7 +87,7 @@ function toutiao($url)
 
 function extractId($url)
 {
-    $headers = get_headers($url, true);
+    $headers = svGetHeaders($url, true);
     if ($headers === false) {
         // 如果获取头信息失败，直接使用原始 URL
         $loc = $url;
@@ -111,21 +112,21 @@ function extractId($url)
 
 function curl($url, $header = null, $data = null)
 {
-    $con = curl_init((string)$url);
-    curl_setopt($con, CURLOPT_HEADER, false);
-    curl_setopt($con, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($con, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($con, CURLOPT_FOLLOWLOCATION, 1);
-    curl_setopt($con, CURLOPT_AUTOREFERER, 1);
+    $con = svCurlInit((string)$url);
+    svCurlSetopt($con, CURLOPT_HEADER, false);
+    svCurlSetopt($con, CURLOPT_SSL_VERIFYPEER, false);
+    svCurlSetopt($con, CURLOPT_RETURNTRANSFER, true);
+    svCurlSetopt($con, CURLOPT_FOLLOWLOCATION, 1);
+    svCurlSetopt($con, CURLOPT_AUTOREFERER, 1);
     if (isset($header)) {
-        curl_setopt($con, CURLOPT_HTTPHEADER, $header);
+        svCurlSetopt($con, CURLOPT_HTTPHEADER, $header);
     }
     if (isset($data)) {
-        curl_setopt($con, CURLOPT_POST, true);
-        curl_setopt($con, CURLOPT_POSTFIELDS, $data);
+        svCurlSetopt($con, CURLOPT_POST, true);
+        svCurlSetopt($con, CURLOPT_POSTFIELDS, $data);
     }
-    curl_setopt($con, CURLOPT_TIMEOUT, 5000);
-    $result = curl_exec($con);
+    svCurlSetopt($con, CURLOPT_TIMEOUT, 5000);
+    $result = svCurlExec($con);
     if ($result === false) {
         // 处理 curl 错误
         $error = curl_error($con);

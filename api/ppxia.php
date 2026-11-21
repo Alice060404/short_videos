@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/lib/entry_guard.php';
 /**
  * @Author: JH-Ahua
  * @CreateTime: 2026/2/23 下午11:21
@@ -18,22 +19,22 @@ const CURL_TIMEOUT = 5000;
 // 初始化 CURL 选项
 function initCurlOptions($ch, $url, $header = null, $data = null)
 {
-    curl_setopt($ch, CURLOPT_URL, (string)$url);
-    curl_setopt($ch, CURLOPT_HEADER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
-    curl_setopt($ch, CURLOPT_AUTOREFERER, 1);
-    curl_setopt($ch, CURLOPT_MAXREDIRS, MAX_REDIRECTS);
-    curl_setopt($ch, CURLOPT_TIMEOUT, CURL_TIMEOUT);
+    svCurlSetopt($ch, CURLOPT_URL, (string)$url);
+    svCurlSetopt($ch, CURLOPT_HEADER, false);
+    svCurlSetopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    svCurlSetopt($ch, CURLOPT_RETURNTRANSFER, true);
+    svCurlSetopt($ch, CURLOPT_FOLLOWLOCATION, 1);
+    svCurlSetopt($ch, CURLOPT_AUTOREFERER, 1);
+    svCurlSetopt($ch, CURLOPT_MAXREDIRS, MAX_REDIRECTS);
+    svCurlSetopt($ch, CURLOPT_TIMEOUT, CURL_TIMEOUT);
 
     if (isset($header)) {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $header);
+        svCurlSetopt($ch, CURLOPT_HTTPHEADER, $header);
     }
 
     if (isset($data)) {
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        svCurlSetopt($ch, CURLOPT_POST, true);
+        svCurlSetopt($ch, CURLOPT_POSTFIELDS, $data);
     }
 
     return $ch;
@@ -42,11 +43,11 @@ function initCurlOptions($ch, $url, $header = null, $data = null)
 // 获取重定向后的 URL
 function getRedirectUrl($url)
 {
-    $ch = curl_init();
+    $ch = svCurlInit();
     $ch = initCurlOptions($ch, $url);
-    curl_setopt($ch, CURLOPT_NOBODY, true);
+    svCurlSetopt($ch, CURLOPT_NOBODY, true);
 
-    $result = curl_exec($ch);
+    $result = svCurlExec($ch);
     if ($result === false) {
         $error = curl_error($ch);
         curl_close($ch);
@@ -61,10 +62,10 @@ function getRedirectUrl($url)
 // 执行 CURL 请求
 function curl($url, $header = null, $data = null)
 {
-    $ch = curl_init();
+    $ch = svCurlInit();
     $ch = initCurlOptions($ch, $url, $header, $data);
 
-    $result = curl_exec($ch);
+    $result = svCurlExec($ch);
     if ($result === false) {
         $error = curl_error($ch);
         curl_close($ch);

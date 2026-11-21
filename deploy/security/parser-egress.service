@@ -1,0 +1,12 @@
+[Unit]
+Description=Restrict short-videos parser outbound network access
+After=ufw.service
+Before=php8.1-fpm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/short-videos-egress
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

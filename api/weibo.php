@@ -1,284 +1,108 @@
 <?php
-/**
- *@Author: JH-Ahua
- *@CreateTime: 2026/4/30 23:27
- *@email: admin@bugpk.com
- *@blog: www.jiuhunwl.cn
- *@Api: api.bugpk.com
- *@tip: 微博视频去水印解析（非文章视频图文解析）
- */
-@set_time_limit(90);
-@ini_set('max_execution_time', '90');
-header("Access-Control-Allow-Origin: *");
-
-define('MAX_REDIRECTS', 5);
-define('TIMEOUT', 30);
-
-function main()
+require_once __DIR__ . '/lib/entry_guard.php';
+/** Public Weibo videos: initialise an anonymous visitor session, never a user login. */
+require_once __DIR__ . '/lib/public_media.php';
+function weiboGuest(PublicMediaHttp $http): void
 {
-    $params = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
-    $url = $params['url'] ?? '';
-
-    if (empty($url)) {
-        outputError('参数url不能为空', 400);
-    }
-
-    $videoId = extractVideoId($url);
-    if (empty($videoId)) {
-        outputError("无法从URL中提取视频ID: {$url}", 404);
-    }
-
-    $headers = getRequestHeaders();
-    $result = fetchVideoInfo($videoId, $headers);
-    outputSuccess($result);
+    $fp = ['os' => '1', 'browser' => 'Chrome131,0,0,0', 'fonts' => 'undefined', 'screenInfo' => '1920*1080*24', 'plugins' => ''];
+    $r = $http->request('https://passport.weibo.com/visitor/genvisitor', http_build_query(['cb' => 'gen_callback', 'fp' => json_encode($fp)]), 'https://weibo.com/');
+    $start = strpos($r['body'], '('); $end = strrpos($r['body'], ')');
+    $data = ($start !== false && $end !== false) ? json_decode(substr($r['body'], $start + 1, $end - $start - 1), true) : null;
+    if (empty($data['data']['tid'])) throw new RuntimeException('微博访客服务暂不可用，请稍后重试', 502);
+    $v = $data['data'];
+    $http->request('https://passport.weibo.com/visitor/visitor?' . http_build_query([
+        'a' => 'incarnate', 't' => $v['tid'], 'w' => !empty($v['new_tid']) ? 3 : 2,
+        'c' => sprintf('%03d', $v['confidence'] ?? 100), 'gc' => '', 'cb' => 'cross_domain', 'from' => 'weibo',
+    ]), null, 'https://weibo.com/');
 }
-
-function extractVideoId($url)
+function weiboBest(array $candidates): array
 {
-    $id = '';
-
-    if (strpos($url, 'video.weibo.com/show') !== false) {
-        $parsedUrl = parse_url($url);
-        if (isset($parsedUrl['query'])) {
-            parse_str($parsedUrl['query'], $queryParams);
-            $id = $queryParams['fid'] ?? '';
-        }
-    } else if (strpos($url, 'weibo.com/tv/') !== false) {
-        $parsedUrl = parse_url($url);
-        if (isset($parsedUrl['query'])) {
-            parse_str($parsedUrl['query'], $queryParams);
-            $id = $queryParams['fid'] ?? '';
-        }
-        if (empty($id)) {
-            $pattern = '/weibo\.com\/tv\/(show|v)\/([^?&]+)/';
-            preg_match($pattern, $url, $matches);
-            $id = $matches[2] ?? '';
-        }
-    } else if (strpos($url, 't.cn/') !== false) {
-        $redirectUrl = getRedirectUrl($url);
-        $id = !empty($redirectUrl) ? extractVideoId($redirectUrl) : '';
+    $valid = [];
+    foreach ($candidates as $item) {
+        $url = publicMediaUrl($item['url'] ?? '');
+        if (!$url) continue;
+        $host = strtolower(parse_url($url, PHP_URL_HOST) ?? '');
+        if (!preg_match('~(?:^|\.)(?:weibocdn\.com|sinaimg\.cn)$~', $host)) continue;
+        $item['url'] = $url;
+        $valid[] = $item;
     }
-
-    return $id;
+    usort($valid, static fn($a, $b) => ($b['rank'] ?? 0) <=> ($a['rank'] ?? 0));
+    if (!$valid) throw new RuntimeException('没有可公开下载的视频地址，作品可能已删除或需要登录', 422);
+    return $valid;
 }
-
-function getRedirectUrl($url)
+function weiboComponentMedia(array $v): array
 {
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_NOBODY, true);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    curl_setopt($ch, CURLOPT_TIMEOUT, TIMEOUT);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
-    curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
-    curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, 256);
-    curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, 8);
-    curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-
-    curl_exec($ch);
-    $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
-    curl_close($ch);
-
-    return $redirectUrl;
-}
-
-function getRequestHeaders()
-{
-    //微博web端cookie
+    if (!empty($v['is_paid'])) throw new RuntimeException('暂不支持付费视频', 422);
+    $items = [];
+    foreach ($v['urls'] ?? [] as $label => $url) {
+        preg_match('~(\d+)[pPkK]~', (string)$label, $m);
+        $rank = isset($m[1]) ? (int)$m[1] : 0;
+        if (stripos((string)$label, 'K') !== false) $rank *= 1000;
+        $items[] = ['label' => (string)$label, 'quality' => (string)$label, 'rank' => $rank, 'url' => $url];
+    }
+    if (!$items && !empty($v['stream_url'])) $items[] = ['label' => '默认', 'url' => $v['stream_url']];
+    $items = weiboBest($items);
     return [
-        'cookie: ',
-        'referer: https://weibo.com/',
-        'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+        'type' => 'video', 'title' => html_entity_decode(strip_tags($v['title'] ?? '')), 'desc' => html_entity_decode(strip_tags($v['text'] ?? $v['title'] ?? '')),
+        'author' => ['name' => $v['author'] ?? '', 'id' => (string)($v['author_id'] ?? ''), 'avatar' => publicMediaUrl($v['avatar'] ?? '')],
+        'cover' => publicMediaUrl($v['cover_image'] ?? ''), 'url' => $items[0]['url'],
+        'quality' => $items[0]['label'] ?? '', 'duration' => is_numeric($v['duration_time'] ?? null) ? (float)$v['duration_time'] : null,
+        'video_backup' => $items, 'publish_time' => (string)($v['date'] ?? ''),
     ];
 }
-
-function fetchVideoInfo($videoId, $headers)
+function weiboStatusMedia(array $v): array
 {
-    $apiUrl = 'https://weibo.com/tv/api/component';
-    $pagePath = "/tv/show/{$videoId}";
-    $requestUrl = "{$apiUrl}?page=" . urlencode($pagePath);
-
-    $requestData = [
-        'Component_Play_Playinfo' => ['oid' => $videoId]
+    $media = $v['page_info']['media_info'] ?? [];
+    $items = [];
+    foreach ($media['playback_list'] ?? [] as $entry) {
+        $p = $entry['play_info'] ?? [];
+        if (($p['mime'] ?? '') !== 'video/mp4' || !empty($p['is_pay'])) continue;
+        $items[] = ['label' => $p['quality_desc'] ?? $p['quality_label'] ?? '', 'rank' => $p['height'] ?? $entry['meta']['quality_index'] ?? 0, 'url' => $p['url'] ?? ''];
+    }
+    if (!$items) foreach (['mp4_720p_mp4' => 720, 'mp4_hd_url' => 480, 'stream_url_hd' => 480, 'stream_url' => 360] as $key => $rank) {
+        if (!empty($media[$key])) $items[] = ['label' => $rank . 'P', 'rank' => $rank, 'url' => $media[$key]];
+    }
+    $items = weiboBest($items);
+    return [
+        'type' => 'video', 'title' => html_entity_decode(strip_tags($media['video_title'] ?? $media['name'] ?? $v['text_raw'] ?? $v['text'] ?? '')),
+        'desc' => html_entity_decode(strip_tags($v['text_raw'] ?? $v['text'] ?? '')),
+        'author' => ['name' => $v['user']['screen_name'] ?? '', 'id' => (string)($v['user']['id'] ?? ''), 'avatar' => publicMediaUrl($v['user']['avatar_large'] ?? $v['user']['profile_image_url'] ?? '')],
+        'cover' => publicMediaUrl($v['page_info']['page_pic'] ?? ''), 'url' => $items[0]['url'], 'quality' => $items[0]['label'] ?? '',
+        'duration' => isset($media['duration']) ? (float)$media['duration'] : null, 'video_backup' => $items,
     ];
-    $postData = 'data=' . urlencode(json_encode($requestData));
-    $response = sendCurlRequest($requestUrl, $postData, $headers, true);
-
-    if (is_array($response)) {
-        return $response;
-    }
-
-    if (empty($response)) {
-        return ['code' => 500, 'msg' => 'API请求失败，无响应数据'];
-    }
-
-    $responseData = json_decode($response, true);
-    if (JSON_ERROR_NONE !== json_last_error()) {
-        return ['code' => 500, 'msg' => 'API响应解析失败', 'raw' => $response];
-    }
-
-    if (isset($responseData['code']) && $responseData['code'] == 100000 && !empty($responseData['data']['Component_Play_Playinfo'])) {
-        $proxyBase = "https://svproxy.168299.xyz/?type=weibo&proxyurl=";
-        $videoInfo = $responseData['data']['Component_Play_Playinfo'];
-
-        $backupUrls = [];
-        $bestQuality = ['priority' => -1, 'url' => '', 'label' => '', 'quality' => ''];
-
-        if (isset($videoInfo['urls']) && is_array($videoInfo['urls'])) {
-            foreach ($videoInfo['urls'] as $quality => $url) {
-                $fullUrl = $proxyBase . base64_encode('https:' . $url);
-                $qualityKey = 'unknown';
-                $priority = 0;
-
-                if (strpos($quality, '2K') !== false) {
-                    $qualityKey = 'origin';
-                    $priority = 4;
-                } elseif (strpos($quality, '1080P') !== false) {
-                    $qualityKey = 'origin';
-                    $priority = 3;
-                } elseif (strpos($quality, '720P') !== false) {
-                    $qualityKey = 'origin';
-                    $priority = 2;
-                } elseif (strpos($quality, '480P') !== false) {
-                    $qualityKey = 'hd';
-                    $priority = 1;
-                } elseif (strpos($quality, '360P') !== false) {
-                    $qualityKey = 'sd';
-                    $priority = 0;
-                }
-
-                $backupUrls[] = ['label' => $quality, 'quality' => $qualityKey, 'url' => $fullUrl];
-
-                if ($priority > $bestQuality['priority']) {
-                    $bestQuality = ['priority' => $priority, 'url' => $fullUrl, 'label' => $quality, 'quality' => $qualityKey];
-                }
-            }
-        }
-
-        $mainUrl = $bestQuality['url'];
-        $mainQuality = $bestQuality['quality'];
-
-        $duration = 0;
-        if (isset($videoInfo['duration_time'])) {
-            $duration = is_numeric($videoInfo['duration_time']) ? (int)$videoInfo['duration_time'] : 0;
-        }
-
-        $avatar = '';
-        if (!empty($videoInfo['avatar'])) {
-            $avatar = $proxyBase . base64_encode('https:' . $videoInfo['avatar']);
-        }
-
-        $cover = '';
-        if (!empty($videoInfo['cover_image'])) {
-            $cover = $proxyBase . base64_encode('https:' . $videoInfo['cover_image']);
-        }
-
-        return [
-            'code' => 200,
-            'msg' => '解析成功',
-            'data' => [
-                'type' => 'video',
-                'title' => $videoInfo['title'] ?? '',
-                'desc' => $videoInfo['title'] ?? '',
-                'author' => [
-                    'name' => $videoInfo['author'] ?? '',
-                    'id' => (string)($videoInfo['author_id'] ?? ''),
-                    'avatar' => $avatar,
-                ],
-                'cover' => $cover,
-                'url' => $mainUrl,
-                'quality' => $mainQuality,
-                'duration' => $duration,
-                'video_backup' => $backupUrls,
-                'extra' => [
-                    'play_count' => $videoInfo['play_count'] ?? '',
-                    'reposts_count' => $videoInfo['reposts_count'] ?? '',
-                    'comments_count' => $videoInfo['comments_count'] ?? '',
-                    'attitudes_count' => $videoInfo['attitudes_count'] ?? '',
-                    'ip_info' => $videoInfo['ip_info_str'] ?? '',
-                    'date' => $videoInfo['date'] ?? '',
-                ],
-            ]
-        ];
-    } else {
-        $errorMsg = '解析失败,当前链接中的视频不存在。';
-        if (!isset($responseData['code'])) {
-            $errorMsg = '当前官方接口已失效！';
-        } elseif ($responseData['code'] != 100000) {
-            $errorMsg = '官方接口响应错误！';
-        }
-        return ['code' => 404, 'msg' => $errorMsg];
-    }
 }
-
-function sendCurlRequest($url, $postData = '', $headers = [], $isJsonResponse = false, $isDownload = false)
+function parseWeibo(string $input): array
 {
-    $ch = curl_init();
-
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-    curl_setopt($ch, CURLOPT_MAXREDIRS, MAX_REDIRECTS);
-    curl_setopt($ch, CURLOPT_TIMEOUT, TIMEOUT);
-    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, CONNECTION_TIMEOUT);
-    curl_setopt($ch, CURLOPT_NOSIGNAL, 1);
-    curl_setopt($ch, CURLOPT_LOW_SPEED_LIMIT, 256);
-    curl_setopt($ch, CURLOPT_LOW_SPEED_TIME, 8);
-    curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-
-    if (!empty($headers)) {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+    $url = publicMediaInput($input);
+    $parts = parse_url($url);
+    $hosts = ['weibo.com', 'www.weibo.com', 'm.weibo.cn', 'video.weibo.com', 'h5.video.weibo.com', 't.cn'];
+    if (!in_array(strtolower($parts['host'] ?? ''), $hosts, true) || isset($parts['user']) || isset($parts['pass']) || isset($parts['port'])) {
+        throw new RuntimeException('请提供微博视频或微博正文链接', 400);
     }
-
-    if (!empty($postData)) {
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
+    $http = new PublicMediaHttp(array_merge($hosts, ['passport.weibo.com', 'passport.weibo.cn', 'login.sina.com.cn']),
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+    // Anonymous cookies live only in this request's cURL handle and are never sent to clients.
+    weiboGuest($http);
+    if ($parts['host'] === 't.cn') {
+        $url = $http->request($url, null, 'https://weibo.com/')['url'];
+        $parts = parse_url($url);
     }
-
-    if ($isDownload) {
-        curl_setopt($ch, CURLOPT_BINARYTRANSFER, true);
+    $path = $parts['path'] ?? '';
+    parse_str($parts['query'] ?? '', $query);
+    $oid = '';
+    if (preg_match('~/(?:tv/(?:show|v)|show)/(\d+:[0-9a-f]+)(?:/|$)~i', $path, $m)) $oid = $m[1];
+    elseif (isset($query['fid']) && preg_match('~^\d+:[0-9a-f]+$~i', $query['fid'])) $oid = $query['fid'];
+    if ($oid) {
+        $data = $http->json('https://weibo.com/tv/api/component?' . http_build_query(['page' => '/tv/show/' . $oid]),
+            http_build_query(['data' => json_encode(['Component_Play_Playinfo' => ['oid' => $oid]])]), 'https://weibo.com/tv/show/' . $oid);
+        $v = $data['data']['Component_Play_Playinfo'] ?? null;
+        if (($data['code'] ?? '') != '100000' || !is_array($v)) throw new RuntimeException('微博视频不可用，可能已删除或需要登录', 404);
+        return weiboComponentMedia($v);
     }
-
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
-    curl_close($ch);
-
-    if ($error) {
-        if ($isJsonResponse) {
-            return ['code' => 500, 'msg' => "cURL错误: {$error}"];
-        } else {
-            return false;
-        }
+    if (preg_match('~^/(?:\d+|status|detail)/([A-Za-z0-9]+)(?:/|$)~', $path, $m)) {
+        $v = $http->json('https://weibo.com/ajax/statuses/show?' . http_build_query(['id' => $m[1]]), null, 'https://weibo.com/');
+        return weiboStatusMedia($v);
     }
-
-    if ($httpCode >= 400) {
-        if ($isJsonResponse) {
-            return ['code' => $httpCode, 'msg' => "API请求失败，HTTP状态码: {$httpCode}"];
-        } else {
-            return false;
-        }
-    }
-
-    return $response;
+    throw new RuntimeException('无法识别微博视频链接', 400);
 }
-
-function outputSuccess($data)
-{
-    header('Content-Type: application/json');
-    echo json_encode($data, 480);
-}
-
-function outputError($message, $code = 500)
-{
-    header("Content-Type: application/json");
-    echo json_encode(['code' => $code, 'msg' => $message], 480);
-    exit;
-}
-
-main();
+if (!defined('PUBLIC_MEDIA_TEST')) publicMediaRespond('parseWeibo');

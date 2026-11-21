@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {createHmac} from 'node:crypto';
+const source=await readFile(new URL('./worker.js',import.meta.url),'utf8');
+const {default:worker}=await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const key='test-only-signing-secret-not-used-in-production';
+const allow={limit:async()=>({success:true})};
+const env={MEDIA_SIGNING_KEY:key,MEDIA_IP_LIMIT:allow,MEDIA_TOKEN_LIMIT:allow,MEDIA_TOTAL_LIMIT:allow};
+function request(target='https://v.douyinvod.com/a',type='douyin',exp=Math.floor(Date.now()/1000)+600) {
+ const sig=createHmac('sha256',key).update(type+'\n'+exp+'\n'+target).digest('hex');
+ return new Request('https://media.litcheng.com/?'+new URLSearchParams({proxyurl:Buffer.from(target).toString('base64'),type,exp:String(exp),sig,mediatype:'video',download:'false'}),{headers:{'CF-Connecting-IP':'192.0.2.1'}});
+}
+let calls=0;
+globalThis.fetch=async()=>{calls++;throw new Error('Unexpected upstream request');};
+assert.equal((await worker.fetch(new Request('https://media.litcheng.com/?proxyurl=https://v.douyinvod.com/a'),env)).status,403);
+assert.equal((await worker.fetch(request(undefined,undefined,Math.floor(Date.now()/1000)-1),env)).status,403);
+const tampered=new URL(request().url);tampered.searchParams.set('type','weibo');
+assert.equal((await worker.fetch(new Request(tampered),env)).status,403);
+for(const target of ['https://example.com/a','https://douyinvod.com.evil.test/a','https://user:pass@douyinvod.com/a','https://douyinvod.com:444/a'])assert.equal((await worker.fetch(request(target),env)).status,403);
+assert.equal(calls,0);
+assert.equal((await worker.fetch(request(),{...env,MEDIA_IP_LIMIT:{limit:async()=>({success:false})}})).status,429);
+assert.equal((await worker.fetch(request(),{...env,MEDIA_TOKEN_LIMIT:{limit:async()=>({success:false})}})).status,429);
+assert.equal(calls,0);
+globalThis.fetch=async()=>{calls++;return new Response(null,{status:302,headers:{Location:'http://127.0.0.1/private'}});};
+assert.equal((await worker.fetch(request(),env)).status,403);assert.equal(calls,1);
+let upstreamHeaders;
+globalThis.fetch=async(url,opts)=>{upstreamHeaders=opts.headers;return new Response('test',{status:206,headers:{'Content-Type':'video/mp4','Content-Range':'bytes 0-3/10','Content-Length':'4'}});};
+const req=request('https://upos-sz-mirrorcosov.bilivideo.com/test','bilibili');req.headers.set('Range','bytes=0-3');
+const res=await worker.fetch(req,env);assert.equal(res.status,206);assert.equal(await res.text(),'test');
+assert.equal(upstreamHeaders.Range,'bytes=0-3');assert.equal(upstreamHeaders.Referer,'https://www.bilibili.com/');
+assert.equal(res.headers.get('Content-Range'),'bytes 0-3/10');assert.equal(res.headers.get('Access-Control-Allow-Origin'),'https://sv.litcheng.com');
+globalThis.fetch=async()=>new Response('x',{headers:{'Content-Length':String(513*1024*1024)}});
+assert.equal((await worker.fetch(request(),env)).status,413);
+console.log('PASS: missing/expired/tampered signatures, host and redirect checks, rate limits, size cap, valid Range and Bilibili Referer');

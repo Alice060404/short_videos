@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/lib/entry_guard.php';
 /**
 *@Author: JH-Ahua
  * @CreateTime: 2025/8/5 下午2:19
@@ -59,14 +60,14 @@ function sendPostRequest($apiurl, $payload)
         'Content-Type: application/json',
         'Content-Length: '. strlen($jsonPayload)
     ];
-    $ch = curl_init($apiurl);
-    curl_setopt($ch, CURLOPT_POST, 1);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonPayload);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-    $response = curl_exec($ch);
+    $ch = svCurlInit($apiurl);
+    svCurlSetopt($ch, CURLOPT_POST, 1);
+    svCurlSetopt($ch, CURLOPT_POSTFIELDS, $jsonPayload);
+    svCurlSetopt($ch, CURLOPT_HTTPHEADER, $headers);
+    svCurlSetopt($ch, CURLOPT_RETURNTRANSFER, true);
+    svCurlSetopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    svCurlSetopt($ch, CURLOPT_SSL_VERIFYHOST, false);
+    $response = svCurlExec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     if (curl_errno($ch)) {
         $error = curl_error($ch);

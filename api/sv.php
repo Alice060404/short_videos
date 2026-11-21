@@ -17,6 +17,10 @@ header('Content-Type: application/json; charset=utf-8');
 // 如需转发到其他站点，将 path 改为完整 URL 即可，
 // 例如 'https://api.bugpk.com/api/douyin/douyin.php'。
 $platforms = [
+    'youtube' => [
+        'keywords' => ['youtube.com', 'youtu.be'],
+        'path' => 'youtube/youtube.php',
+    ],
     'douyin' => [
         'keywords' => ['douyin', 'iesdouyin'],
         'path' => 'douyin/douyin.php',
@@ -26,7 +30,7 @@ $platforms = [
         'path' => 'kuaishou/ksjx.php',
     ],
     'xiaohongshu' => [
-        'keywords' => ['xhs', 'xiaohongshu'],
+        'keywords' => ['xhs', 'xiaohongshu', 'rednote'],
         'path' => 'xiaohongshu/xhsjx.php',
     ],
     'bilibili' => [

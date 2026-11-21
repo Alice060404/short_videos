@@ -80,6 +80,8 @@
 
 ## 🌐 支持平台
 
+YouTube 已接入网页和 `api/youtube/youtube.php`，支持普通长视频及 Shorts 的元数据和媒体流解析，需要独立 Python/yt-dlp 服务。已部署到 us；分离音画提供独立下载链接和合并提示，不自动合并。启动方式和限制见 [YouTube 接口说明](services/youtube/README.md)，生产服务配置见 [部署说明](deploy/youtube/README.md)，验收及回滚信息见 [部署记录](docs/YouTube部署记录-2026-11-08.md)。
+
 > 抖音内容解析仅保留 **PHP 版**与 **Cloudflare Workers 版**两个整合版（视频/图集/实况统一入口）；主页批量解析为独立接口，需登录 Cookie。
 
 | 平台 | 接口文件 | 功能 | 登录要求 | 状态 |
@@ -165,6 +167,31 @@ cd short_videos
 ### 3. 抖音 Workers 版（可选）
 
 如需部署在 Cloudflare Workers 上，进入 `api/douyin-cloudflare workers/` 查看 [README](api/douyin-cloudflare%20workers/README.md)，粘贴 `workers.js` 部署即可。
+
+### 4. 网页前端（可选）
+
+仓库里有两个前端，任选一个：
+
+- **`web/`（推荐）**：用 Next.js 构建的完整网站。包含解析、本地历史记录、搜索、中英文切换、深浅色主题，手机端单独排版。开发、构建和部署方法见 [web/README.md](web/README.md)；公开上线前，请先看 [部署上线指南](docs/部署上线指南.md)。
+- **根目录 `index.html`**：单文件的轻量版，无需构建，直接上传就能用。下面的说明针对它。
+
+粘贴分享链接后，页面会预览视频、图集和实况，并提供下载按钮。
+
+- **本地运行**：安装 PHP 8+（需启用 `curl` 扩展），在仓库根目录执行下面的命令，然后打开 <http://localhost:8000>。
+
+  ```bash
+  php -S localhost:8000
+  ```
+
+  注意要在 php.ini 里设置 `display_errors = Off`，或者直接用 `php.ini-production` 作模板。否则 PHP 8.4 会把部分接口的 Deprecated 警告混进输出，前端就会提示“接口返回格式不正确”。
+
+  前端会自己识别平台，直接请求对应的单平台接口，不经过 `sv.php`，所以在 `php -S` 单进程下也能正常运行。
+- **配置**：在 `index.html` 顶部的 `CONFIG` 里修改：
+  - `apiBase`：解析接口目录。前后端分开部署时填完整地址，例如 `https://api.example.com/api/`。
+  - `proxyBase`：媒体代理地址。默认是 PHP 版 `api/svproxyurl.php`，也可以改成 [cf_sv_proxy](cf_sv_proxy/README.md) 的 Worker 地址。
+  - `proxyPlatforms`：需要走代理下载的平台。默认是抖音和微博，因为它们的直链会校验 Referer。
+- **增加平台**：除了修改 `api/sv.php` 的 `$platforms`，也要同步修改 `index.html` 里的 `PLATFORMS`。
+- **公开部署**：建议给 `api/svproxyurl.php` 的 `$allowedHostSuffixes` 填上平台 CDN 域名，并在 Web 服务器上加按 IP 的限流。
 
 ---
 

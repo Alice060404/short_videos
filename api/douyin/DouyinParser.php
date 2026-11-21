@@ -129,7 +129,7 @@ class DouyinParser
             'http' => ['method' => 'GET', 'header' => 'User-Agent: ' . self::DESKTOP_UA],
         ]);
 
-        $headers = @get_headers($url, 1);
+        $headers = @svGetHeaders($url, 1);
         if (isset($headers['Location'])) {
             $locations = is_array($headers['Location']) ? $headers['Location'] : [$headers['Location']];
             foreach ($locations as $location) {
@@ -141,8 +141,8 @@ class DouyinParser
         }
 
         // 兜底：cURL 跟随重定向取最终地址
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $ch = svCurlInit($url);
+        svCurlSetoptArray($ch, [
             CURLOPT_USERAGENT => self::DESKTOP_UA,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
@@ -152,7 +152,7 @@ class DouyinParser
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false,
         ]);
-        curl_exec($ch);
+        svCurlExec($ch);
         $realUrl = (string)curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
         curl_close($ch);
 
@@ -686,17 +686,18 @@ class DouyinParser
         $redirected = false;
 
         for ($i = 0; $i < $max; $i++) {
-            $ch = curl_init($current);
-            curl_setopt_array($ch, [
+            $ch = svCurlInit($current);
+            svCurlSetoptArray($ch, [
                 CURLOPT_USERAGENT => self::DESKTOP_UA,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_FOLLOWLOCATION => false,
                 CURLOPT_HEADER => true,
+                CURLOPT_NOBODY => true,
                 CURLOPT_TIMEOUT => 10,
                 CURLOPT_SSL_VERIFYPEER => false,
                 CURLOPT_SSL_VERIFYHOST => false,
             ]);
-            $response = curl_exec($ch);
+            $response = svCurlExec($ch);
             $error = curl_error($ch);
             $headerSize = (int)curl_getinfo($ch, CURLINFO_HEADER_SIZE);
             $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -749,8 +750,8 @@ class DouyinParser
      */
     private function httpGet($url, $headers = [], $timeout = self::REQUEST_TIMEOUT)
     {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $ch = svCurlInit($url);
+        svCurlSetoptArray($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_ENCODING => 'gzip,deflate',
@@ -760,7 +761,7 @@ class DouyinParser
             CURLOPT_HTTPHEADER => $headers,
         ]);
 
-        $response = curl_exec($ch);
+        $response = svCurlExec($ch);
         $error = curl_error($ch);
         curl_close($ch);
 
@@ -776,8 +777,8 @@ class DouyinParser
             return 0;
         }
 
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $ch = svCurlInit($url);
+        svCurlSetoptArray($ch, [
             CURLOPT_USERAGENT => self::DESKTOP_UA,
             CURLOPT_NOBODY => true,
             CURLOPT_FOLLOWLOCATION => true,
@@ -786,7 +787,7 @@ class DouyinParser
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false,
         ]);
-        curl_exec($ch);
+        svCurlExec($ch);
         $error = curl_error($ch);
         $contentType = strtolower((string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE));
         $length = (int)curl_getinfo($ch, CURLINFO_CONTENT_LENGTH_DOWNLOAD_T);

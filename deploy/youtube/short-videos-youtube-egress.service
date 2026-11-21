@@ -1,0 +1,12 @@
+[Unit]
+Description=Restrict YouTube parser outbound network
+After=ufw.service
+Before=short-videos-youtube.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/short-videos-youtube-egress
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

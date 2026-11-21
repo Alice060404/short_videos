@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>短视频解析</title>
+<link rel="icon" href="img/icon.png">
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --text: #1f2328; --muted: #6b7280;
+    --line: #e5e7eb; --primary: #2563eb; --primary-hover: #1d4ed8;
+    --danger: #dc2626; --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0f1115; --card: #181b21; --text: #e6e8eb; --muted: #9aa1ab; --line: #2a2f37; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: var(--bg); color: var(--text); line-height: 1.5; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+  header { text-align: center; margin-bottom: 24px; }
+  header img { width: 56px; height: 56px; }
+  header h1 { margin: 8px 0 4px; font-size: 24px; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  textarea { width: 100%; min-height: 96px; resize: vertical; padding: 12px; font: inherit; color: inherit;
+             background: transparent; border: 1px solid var(--line); border-radius: 8px; }
+  textarea:focus { outline: 2px solid var(--primary); border-color: transparent; }
+  .row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  button, .btn { display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+                 padding: 8px 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--card);
+                 color: var(--text); font: inherit; font-size: 14px; cursor: pointer; text-decoration: none; }
+  button.primary, .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  button.primary:hover, .btn.primary:hover { background: var(--primary-hover); }
+  button:disabled { opacity: .6; cursor: wait; }
+  .platforms { margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .msg { margin-top: 16px; padding: 12px 16px; border-radius: 8px; font-size: 14px; display: none; }
+  .msg.error { display: block; background: rgba(220,38,38,.1); color: var(--danger); }
+  .msg.info { display: block; background: rgba(37,99,235,.1); color: var(--primary); }
+  #result { margin-top: 16px; display: none; }
+  .meta { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .meta img.avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--line); }
+  .meta .name { font-weight: 600; }
+  .meta .sub { color: var(--muted); font-size: 12px; }
+  .title { font-size: 15px; margin: 0 0 12px; white-space: pre-wrap; word-break: break-word; }
+  video { width: 100%; max-height: 70vh; border-radius: 8px; background: #000; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+  .grid figure { margin: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .grid img, .grid video { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; border-radius: 0; }
+  .grid figcaption { display: flex; gap: 4px; padding: 6px; }
+  .grid figcaption a { flex: 1; padding: 4px 6px; font-size: 12px; }
+  .section-title { font-size: 13px; color: var(--muted); margin: 16px 0 8px; }
+  .tip { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  footer { margin-top: 32px; text-align: center; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="img/icon.png" alt="">
+    <h1>短视频解析</h1>
+    <p>粘贴分享链接或整段分享文案，获取无水印视频 / 图集 / 实况</p>
+  </header>
+
+  <section class="card">
+    <textarea id="input" placeholder="例如：7.94 复制打开抖音，看看【xxx的作品】... https://v.douyin.com/xxxx/"></textarea>
+    <div class="row">
+      <button class="primary" id="parseBtn">解析</button>
+      <button id="pasteBtn">粘贴</button>
+      <button id="clearBtn">清空</button>
+    </div>
+    <div class="platforms" id="platforms"></div>
+  </section>
+
+  <div class="msg" id="msg"></div>
+
+  <section class="card" id="result"></section>
+
+  <footer>
+    解析结果的版权归原平台及作者所有，仅供个人学习与备份使用，请勿用于商业或违法用途。
+  </footer>
+</main>
+
+<script>
+/* ==================== 配置区域 ==================== */
+const CONFIG = {
+  // 解析接口目录（相对本页面，或完整 URL，如 'https://api.example.com/api/'）
+  apiBase: 'api/',
+  // 媒体代理地址：PHP 版 'api/svproxyurl.php'，或 Cloudflare Worker 地址 'https://proxy.example.com/'
+  proxyBase: 'api/svproxyurl.php',
+  // 需要走代理下载的平台（直链校验 Referer，直接访问会 403）
+  proxyPlatforms: ['douyin', 'weibo'],
+};
+
+// 平台识别表：与 api/sv.php 的 $platforms 保持一致。
+// 前端直接请求单平台接口，少一次服务端转发，也能在 php -S 单进程下正常工作。
+const PLATFORMS = [
+  { id: 'douyin',      name: '抖音',     keywords: ['douyin', 'iesdouyin'],  path: 'douyin/douyin.php' },
+  { id: 'kuaishou',    name: '快手',     keywords: ['kuaishou'],             path: 'kuaishou/ksjx.php' },
+  { id: 'xiaohongshu', name: '小红书',   keywords: ['xhs', 'xiaohongshu', 'rednote'],   path: 'xiaohongshu/xhsjx.php' },
+  { id: 'bilibili',    name: '哔哩哔哩', keywords: ['bilibili', 'b23'],      path: 'bilibili/bilibili.php' },
+  { id: 'weibo',       name: '微博',     keywords: ['weibo'],                path: 'weibo.php' },
+  { id: 'toutiao',     name: '今日头条', keywords: ['toutiao'],              path: 'toutiao.php' },
+  { id: 'pipixia',     name: '皮皮虾',   keywords: ['pipix'],                path: 'ppxia.php' },
+  { id: 'pipigx',      name: '皮皮搞笑', keywords: ['ippzone', 'pipigx'],    path: 'pipigx.php' },
+  { id: 'zuiyou',      name: '最右',     keywords: ['izuiyou'],              path: 'zuiyou.php' },
+];
+/* ================================================== */
+
+const $ = (id) => document.getElementById(id);
+const input = $('input'), parseBtn = $('parseBtn'), msgEl = $('msg'), resultEl = $('result');
+
+$('platforms').textContent = '支持：' + PLATFORMS.map(p => p.name).join(' / ');
+
+function extractUrl(text) {
+  const m = text.match(/https?:\/\/[^\s"'<>，。；]+/i);
+  return m ? m[0].replace(/[,.;]+$/, '') : null;
+}
+
+function matchPlatform(text) {
+  const lower = text.toLowerCase();
+  return PLATFORMS.find(p => p.keywords.some(k => lower.includes(k))) || null;
+}
+
+function showMsg(text, type = 'error') {
+  msgEl.className = 'msg ' + type;
+  msgEl.textContent = text;
+}
+function hideMsg() { msgEl.className = 'msg'; }
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// UTF-8 安全的 Base64
+function b64(str) {
+  return btoa(String.fromCharCode(...new TextEncoder().encode(str)));
+}
+
+// 生成下载链接：需要防盗链的平台走代理，其余直接返回直链
+function downloadUrl(url, platformId, mediatype) {
+  if (!url) return '';
+  if (!CONFIG.proxyPlatforms.includes(platformId)) return url;
+  const sep = CONFIG.proxyBase.includes('?') ? '&' : '?';
+  return CONFIG.proxyBase + sep + 'proxyurl=' + encodeURIComponent(b64(url))
+    + '&type=' + platformId + '&mediatype=' + mediatype;
+}
+
+async function parse() {
+  const text = input.value.trim();
+  if (!text) return showMsg('请先粘贴分享链接');
+  const url = extractUrl(text);
+  if (!url) return showMsg('没有找到有效的链接');
+  const platform = matchPlatform(text);
+  if (!platform) return showMsg('暂不支持该平台的链接');
+
+  hideMsg();
+  resultEl.style.display = 'none';
+  parseBtn.disabled = true;
+  parseBtn.textContent = '解析中…';
+
+  try {
+    const api = CONFIG.apiBase.replace(/\/?$/, '/') + platform.path + '?url=' + encodeURIComponent(url);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 30000);
+    const res = await fetch(api, { signal: ctrl.signal });
+    clearTimeout(timer);
+    const raw = await res.text();
+    let json;
+    try { json = JSON.parse(raw); } catch { throw new Error('接口返回格式不正确（HTTP ' + res.status + '）'); }
+    if (json.code !== 200 || !json.data || Array.isArray(json.data)) {
+      throw new Error(json.msg || '解析失败，请稍后重试');
+    }
+    render(json.data, platform);
+  } catch (e) {
+    showMsg(e.name === 'AbortError' ? '请求超时，请稍后重试' : (e.message || '网络错误'));
+  } finally {
+    parseBtn.disabled = false;
+    parseBtn.textContent = '解析';
+  }
+}
+
+// 兼容尚未迁移到统一 JSON 3.0 的旧接口（B 站、头条、皮皮虾、皮皮搞笑、最右等）
+function normalize(d) {
+  const author = (d.author && typeof d.author === 'object')
+    ? d.author
+    : { name: d.author || d.user?.name || '', avatar: d.avatar || d.user?.avatar || '' };
+  const url = d.url || d.video || null;
+  let images = Array.isArray(d.images) ? d.images : [];
+  if (!images.length && d.imgurl) images = [].concat(d.imgurl).filter(Boolean);
+  const live = Array.isArray(d.live_photo) ? d.live_photo : [];
+  let type = d.type;
+  if (!['video', 'image', 'live'].includes(type)) {
+    type = url ? 'video' : live.length ? 'live' : 'image';
+  }
+  return {
+    ...d, type, author, url, images, live_photo: live,
+    title: d.title || d.desc || d.description || '',
+    publish_time: d.publish_time || d.time || '',
+    music: (d.music && typeof d.music === 'object') ? d.music : {},
+  };
+}
+
+function render(raw, platform) {
+  const d = normalize(raw);
+  const author = d.author;
+  const title = d.title;
+  const sub = [platform.name, d.publish_time, d.quality, d.size_label].filter(Boolean).join(' · ');
+  let html = `
+    <div class="meta">
+      ${author.avatar ? `<img class="avatar" src="${escapeHtml(author.avatar)}" alt="">` : ''}
+      <div><div class="name">${escapeHtml(author.name || '未知作者')}</div><div class="sub">${escapeHtml(sub)}</div></div>
+    </div>
+    ${title ? `<p class="title">${escapeHtml(title)}</p>` : ''}`;
+
+  if (d.type === 'video' && d.url) {
+    const dl = downloadUrl(d.url, platform.id, 'video');
+    html += `
+      <video src="${escapeHtml(d.url)}" poster="${escapeHtml(d.cover || '')}" controls playsinline preload="metadata"></video>
+      <div class="row">
+        <a class="btn primary" href="${escapeHtml(dl)}" target="_blank" rel="noopener noreferrer" download>下载视频</a>
+        <button data-copy="${escapeHtml(d.url)}">复制直链</button>
+        ${d.cover ? `<a class="btn" href="${escapeHtml(downloadUrl(d.cover, platform.id, 'image'))}" target="_blank" rel="noopener noreferrer">下载封面</a>` : ''}
+      </div>`;
+    if (Array.isArray(d.video_backup) && d.video_backup.length) {
+      html += `<div class="section-title">其他画质</div><div class="row">` +
+        d.video_backup.map(b => `<a class="btn" href="${escapeHtml(downloadUrl(b.url, platform.id, 'video'))}" target="_blank" rel="noopener noreferrer">${escapeHtml(b.label || b.quality || '备选')}${b.size_label ? ' · ' + escapeHtml(b.size_label) : ''}</a>`).join('') +
+        `</div>`;
+    }
+  }
+
+  if (Array.isArray(d.images) && d.images.length) {
+    html += `<div class="section-title">图片（${d.images.length}）</div><div class="grid">` +
+      d.images.map((src, i) => `
+        <figure>
+          <img src="${escapeHtml(src)}" loading="lazy" alt="图片 ${i + 1}">
+          <figcaption><a class="btn" href="${escapeHtml(downloadUrl(src, platform.id, 'image'))}" target="_blank" rel="noopener noreferrer">下载 ${i + 1}</a></figcaption>
+        </figure>`).join('') + `</div>`;
+  }
+
+  if (Array.isArray(d.live_photo) && d.live_photo.length) {
+    html += `<div class="section-title">实况（${d.live_photo.length}）</div><div class="grid">` +
+      d.live_photo.map((lp, i) => `
+        <figure>
+          <video src="${escapeHtml(lp.video)}" poster="${escapeHtml(lp.image)}" muted loop playsinline preload="none"
+                 onmouseenter="this.play()" onmouseleave="this.pause()" onclick="this.paused?this.play():this.pause()"></video>
+          <figcaption>
+            <a class="btn" href="${escapeHtml(downloadUrl(lp.image, platform.id, 'image'))}" target="_blank" rel="noopener noreferrer">图</a>
+            <a class="btn" href="${escapeHtml(downloadUrl(lp.video, platform.id, 'video'))}" target="_blank" rel="noopener noreferrer">视频</a>
+          </figcaption>
+        </figure>`).join('') + `</div>`;
+  }
+
+  if (d.music && d.music.url) {
+    html += `<div class="section-title">背景音乐：${escapeHtml(d.music.title || '')}${d.music.author ? ' - ' + escapeHtml(d.music.author) : ''}</div>
+      <audio src="${escapeHtml(d.music.url)}" controls preload="none" style="width:100%"></audio>`;
+  }
+
+  html += `<p class="tip">若点击下载后直接开始播放，可在播放页右键 / 长按选择“另存为”。微信内请点右上角在浏览器中打开。</p>`;
+
+  resultEl.innerHTML = html;
+  resultEl.style.display = 'block';
+}
+
+parseBtn.addEventListener('click', parse);
+input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) parse(); });
+$('clearBtn').addEventListener('click', () => { input.value = ''; hideMsg(); resultEl.style.display = 'none'; input.focus(); });
+$('pasteBtn').addEventListener('click', async () => {
+  try { input.value = await navigator.clipboard.readText(); input.focus(); }
+  catch { showMsg('浏览器不允许读取剪贴板，请手动粘贴', 'info'); }
+});
+resultEl.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-copy]');
+  if (!btn) return;
+  try { await navigator.clipboard.writeText(btn.dataset.copy); btn.textContent = '已复制'; }
+  catch { prompt('复制下面的链接：', btn.dataset.copy); }
+  setTimeout(() => { btn.textContent = '复制直链'; }, 1500);
+});
+</script>
+</body>
+</html>

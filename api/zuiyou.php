@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/lib/entry_guard.php';
 /**
  * @Author: JH-Ahua
  * @CreateTime: 2026/3/31 上午11:25
@@ -50,8 +51,8 @@ function getParamFromUrl(string $url, string $param): ?string
  */
 function getRedirectUrl(string $url): ?string
 {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
+    $ch = svCurlInit($url);
+    svCurlSetoptArray($ch, [
         CURLOPT_HEADER => true,
         CURLOPT_NOBODY => true,
         CURLOPT_FOLLOWLOCATION => false,
@@ -66,7 +67,7 @@ function getRedirectUrl(string $url): ?string
         CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     ]);
 
-    $response = curl_exec($ch);
+    $response = svCurlExec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
@@ -122,8 +123,8 @@ function getParamFromUrlWithRedirect(string $url, string $param): ?string
  */
 function curlRequest(string $url, ?array $headers = null, $data = null)
 {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
+    $ch = svCurlInit($url);
+    svCurlSetoptArray($ch, [
         CURLOPT_HEADER => false,
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_RETURNTRANSFER => true,
@@ -139,15 +140,15 @@ function curlRequest(string $url, ?array $headers = null, $data = null)
     ]);
 
     if (isset($headers)) {
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        svCurlSetopt($ch, CURLOPT_HTTPHEADER, $headers);
     }
 
     if (isset($data)) {
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+        svCurlSetopt($ch, CURLOPT_POST, true);
+        svCurlSetopt($ch, CURLOPT_POSTFIELDS, $data);
     }
 
-    $result = curl_exec($ch);
+    $result = svCurlExec($ch);
 
     if ($result === false) {
         $error = curl_error($ch);

@@ -1,0 +1,265 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "img/**"
+      - "README.md"
+      - "README_EN.md"
+      - "LICENSE"
+      - "download_whitelist.txt"
+      - ".gitignore"
+  workflow_dispatch:
+    inputs:
+      deploy_site:
+        description: "Deploy frontend (web/) + PHP API (api/) to us"
+        type: boolean
+        default: true
+      deploy_youtube:
+        description: "Deploy YouTube Python service (services/youtube/) to us"
+        type: boolean
+        default: false
+      deploy_worker:
+        description: "Deploy Cloudflare Worker (cf_sv_proxy/)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  detect:
+    name: Detect changed components
+    runs-on: ubuntu-latest
+    outputs:
+      site: ${{ steps.changes.outputs.site }}
+      youtube: ${{ steps.changes.outputs.youtube }}
+      worker: ${{ steps.changes.outputs.worker }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine components to deploy
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          site=false
+          youtube=false
+          worker=false
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            site="${{ inputs.deploy_site }}"
+            youtube="${{ inputs.deploy_youtube }}"
+            worker="${{ inputs.deploy_worker }}"
+          else
+            before="${{ github.event.before }}"
+            if [[ -z "$before" || "$before" =~ ^0+$ ]] || ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+              # Initial push or force-push where base commit is unavailable: deploy site, and check tracked paths
+              changed="$(git diff-tree --root --no-commit-id --name-only -r HEAD)"
+              site=true
+            else
+              changed="$(git diff --name-only "$before" "${{ github.sha }}")"
+            fi
+
+            echo "Changed files:"
+            echo "$changed"
+
+            if echo "$changed" | grep -qE '^(web/|api/|tests/(security_test\.php|public_media_test\.php|youtube_frontend_test\.cjs)$)'; then
+              site=true
+            fi
+            if echo "$changed" | grep -qE '^(services/youtube/|tests/youtube_test\.py$)'; then
+              youtube=true
+            fi
+            if echo "$changed" | grep -qE '^cf_sv_proxy/'; then
+              worker=true
+            fi
+          fi
+
+          echo "site=$site" >> "$GITHUB_OUTPUT"
+          echo "youtube=$youtube" >> "$GITHUB_OUTPUT"
+          echo "worker=$worker" >> "$GITHUB_OUTPUT"
+          echo "Deploy plan -> site=$site, youtube=$youtube, worker=$worker"
+
+  deploy-us:
+    name: Build, test & deploy to us
+    needs: detect
+    if: needs.detect.outputs.site == 'true' || needs.detect.outputs.youtube == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP 8.1
+        if: needs.detect.outputs.site == 'true'
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.1"
+          extensions: curl, mbstring, openssl
+          coverage: none
+
+      - name: Setup Node.js 22
+        if: needs.detect.outputs.site == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Python 3.10
+        if: needs.detect.outputs.youtube == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Verify PHP syntax & tests
+        if: needs.detect.outputs.site == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          find api -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+          php tests/security_test.php
+          php tests/public_media_test.php
+
+      - name: Build frontend & run component tests
+        if: needs.detect.outputs.site == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm --prefix web ci
+          npm --prefix web run build
+          node tests/youtube_frontend_test.cjs
+
+      - name: Run YouTube service unit tests
+        if: needs.detect.outputs.youtube == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tests/youtube_test.py
+
+      - name: Package release archive
+        shell: bash
+        env:
+          DEPLOY_SITE: ${{ needs.detect.outputs.site }}
+          DEPLOY_YOUTUBE: ${{ needs.detect.outputs.youtube }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          short_sha="${COMMIT_SHA:0:8}"
+          release_id="$(date -u +%Y%m%d-%H%M%S)-${short_sha}"
+          stage="$(mktemp -d)"
+          trap 'rm -rf "$stage"' EXIT
+
+          python3 - "$stage/release-manifest.json" "$release_id" "$COMMIT_SHA" "$DEPLOY_SITE" "$DEPLOY_YOUTUBE" <<'PY'
+          import json, sys
+          path, release_id, sha, site, yt = sys.argv[1:]
+          with open(path, "w", encoding="utf-8") as fh:
+              json.dump(
+                  {
+                      "release_id": release_id,
+                      "commit_sha": sha,
+                      "deploy_site": site == "true",
+                      "deploy_youtube": yt == "true",
+                  },
+                  fh,
+                  indent=2,
+              )
+          PY
+
+          mkdir -p "$stage/tests"
+          if [[ "$DEPLOY_SITE" == "true" ]]; then
+            cp -R web/out "$stage/frontend"
+            cp -R api "$stage/api"
+            cp tests/security_test.php tests/public_media_test.php "$stage/tests/"
+          fi
+          if [[ "$DEPLOY_YOUTUBE" == "true" ]]; then
+            mkdir -p "$stage/services/youtube"
+            cp services/youtube/service.py services/youtube/requirements.txt "$stage/services/youtube/"
+            cp tests/youtube_test.py "$stage/tests/"
+          fi
+
+          tar -czf release.tar.gz -C "$stage" .
+          ls -lh release.tar.gz
+
+      - name: Stream release archive to us & activate
+        shell: bash
+        env:
+          DEPLOY_SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          DEPLOY_SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          DEPLOY_SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          for var in DEPLOY_SSH_HOST DEPLOY_SSH_USER DEPLOY_SSH_KEY DEPLOY_SSH_KNOWN_HOSTS; do
+            if [[ -z "${!var}" ]]; then
+              echo "::error::Missing required GitHub secret: $var"
+              exit 1
+            fi
+          done
+          port="${DEPLOY_SSH_PORT:-22}"
+
+          ssh_dir="$(mktemp -d)"
+          trap 'rm -rf "$ssh_dir"' EXIT
+          chmod 700 "$ssh_dir"
+
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/id_ed25519"
+          chmod 600 "$ssh_dir/id_ed25519"
+          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          chmod 600 "$ssh_dir/known_hosts"
+
+          ssh \
+            -T \
+            -i "$ssh_dir/id_ed25519" \
+            -p "$port" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$ssh_dir/known_hosts" \
+            -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 \
+            -o ServerAliveCountMax=4 \
+            -o IPQoS=none \
+            "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}" < release.tar.gz
+
+  deploy-worker:
+    name: Test & deploy Cloudflare Worker
+    needs: detect
+    if: needs.detect.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run Worker security tests
+        shell: bash
+        run: node cf_sv_proxy/worker.test.mjs
+
+      - name: Deploy Worker via Wrangler
+        working-directory: cf_sv_proxy
+        shell: bash
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CLOUDFLARE_API_TOKEN" ]]; then
+            echo "::warning::CLOUDFLARE_API_TOKEN secret is not set; Worker unit tests passed but remote Worker deployment was skipped."
+            exit 0
+          fi
+          npx --yes wrangler@4 deploy

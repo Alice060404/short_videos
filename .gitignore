@@ -1,3 +1,6 @@
 .idea/
 .workbuddy/
 *.iml
+__pycache__/
+.youtube-test/
+.venv-youtube/

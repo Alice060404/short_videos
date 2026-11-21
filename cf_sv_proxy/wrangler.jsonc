@@ -1,0 +1,38 @@
+{
+  "name": "short-videos-media",
+  "main": "worker.js",
+  "compatibility_date": "2026-11-06",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "media.litcheng.com",
+      "custom_domain": true
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "MEDIA_IP_LIMIT",
+      "namespace_id": "17624101",
+      "simple": {
+        "limit": 120,
+        "period": 60
+      }
+    },
+    {
+      "name": "MEDIA_TOKEN_LIMIT",
+      "namespace_id": "17624102",
+      "simple": {
+        "limit": 60,
+        "period": 60
+      }
+    },
+    {
+      "name": "MEDIA_TOTAL_LIMIT",
+      "namespace_id": "17624103",
+      "simple": {
+        "limit": 1200,
+        "period": 60
+      }
+    }
+  ]
+}
