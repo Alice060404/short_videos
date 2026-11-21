@@ -207,16 +207,61 @@ jobs:
               exit 1
             fi
           done
-          port="${DEPLOY_SSH_PORT:-22}"
+
+          host="$(printf '%s' "$DEPLOY_SSH_HOST" | tr -d '\r\n' | xargs)"
+          port="$(printf '%s' "${DEPLOY_SSH_PORT:-22}" | tr -d '\r\n' | xargs)"
+          user="$(printf '%s' "$DEPLOY_SSH_USER" | tr -d '\r\n' | xargs)"
+          if [[ "$port" == "22" ]]; then
+            expected_host="$host"
+          else
+            expected_host="[$host]:$port"
+          fi
 
           ssh_dir="$(mktemp -d)"
           trap 'rm -rf "$ssh_dir"' EXIT
           chmod 700 "$ssh_dir"
 
-          printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/id_ed25519"
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$ssh_dir/id_ed25519"
           chmod 600 "$ssh_dir/id_ed25519"
-          printf '%s\n' "$DEPLOY_SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          if ! deploy_pub="$(ssh-keygen -y -f "$ssh_dir/id_ed25519" 2>/dev/null)"; then
+            echo "::error::DEPLOY_SSH_KEY is not a valid SSH private key"
+            exit 1
+          fi
+          deploy_key_blob="$(printf '%s' "$deploy_pub" | awk '{print $2}')"
+
+          python3 - "$ssh_dir/known_hosts" "$host" "$port" "$expected_host" "$deploy_key_blob" <<'PY'
+          import os, sys
+          out_path, host, port, expected_host, deploy_key_blob = sys.argv[1:]
+          raw = os.environ["DEPLOY_SSH_KNOWN_HOSTS"].replace("\r", "")
+          lines = [ln.strip() for ln in raw.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+          if not lines:
+              print("::error::DEPLOY_SSH_KNOWN_HOSTS is empty", file=sys.stderr)
+              sys.exit(1)
+          normalized = []
+          for ln in lines:
+              if deploy_key_blob and deploy_key_blob in ln:
+                  print("::error::DEPLOY_SSH_KNOWN_HOSTS contains the deploy client public key instead of the server host key (use github-actions-known-hosts.txt)", file=sys.stderr)
+                  sys.exit(1)
+              parts = ln.split()
+              if parts[0] in ("ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521") and len(parts) >= 2:
+                  normalized.append(f"{expected_host} {parts[0]} {parts[1]}")
+              elif len(parts) >= 3 and parts[0] == host and port != "22":
+                  normalized.append(f"{expected_host} {parts[1]} {parts[2]}")
+              else:
+                  normalized.append(ln)
+          with open(out_path, "w", encoding="utf-8", newline="\n") as fh:
+              fh.write("\n".join(normalized) + "\n")
+          PY
           chmod 600 "$ssh_dir/known_hosts"
+
+          if ! ssh-keygen -lf "$ssh_dir/known_hosts" >/dev/null 2>&1; then
+            echo "::error::DEPLOY_SSH_KNOWN_HOSTS is not valid known_hosts format. Expected: [<host>]:<port> ssh-ed25519 AAAA..."
+            exit 1
+          fi
+          if ! ssh-keygen -F "$expected_host" -f "$ssh_dir/known_hosts" >/dev/null 2>&1; then
+            echo "::error::DEPLOY_SSH_KNOWN_HOSTS has no entry matching DEPLOY_SSH_HOST + DEPLOY_SSH_PORT (check whether host/port in known_hosts matches DEPLOY_SSH_HOST and DEPLOY_SSH_PORT)"
+            exit 1
+          fi
 
           ssh \
             -T \
@@ -229,7 +274,7 @@ jobs:
             -o ServerAliveInterval=15 \
             -o ServerAliveCountMax=4 \
             -o IPQoS=none \
-            "${DEPLOY_SSH_USER}@${DEPLOY_SSH_HOST}" < release.tar.gz
+            "${user}@${host}" < release.tar.gz
 
   deploy-worker:
     name: Test & deploy Cloudflare Worker
