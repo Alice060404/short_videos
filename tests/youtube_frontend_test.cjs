@@ -65,5 +65,31 @@ function load(file) {
   }
   response = { code: 422, msg: 'YouTube 要求额外验证' };
   await assert.rejects(parse.parseShare('https://youtu.be/rfscVS0vtbw'), e => e.code === 'server' && e.detail === response.msg);
-  console.log('PASS: duration, complete/split result markup, download links, YouTube URL forms, upstream error propagation');
+
+  // Xiaohongshu gallery post: preserve desc, render post text + copy/save actions + gallery image row without duplicate cover
+  const xhsImg = 'https://sns-img-hw.xhscdn.com/notes_pre_post/sample?imageView2/2/w/0/format/jpg';
+  const xhsRaw = {
+    type: 'image',
+    title: '每晚2小时｜雅思冲刺',
+    desc: '不用熬夜内卷，每晚固定2小时。\n#雅思备考',
+    cover: xhsImg,
+    url: null,
+    publish_time: '1771998430000',
+    images: [xhsImg],
+    live_photo: [],
+    author: { name: 'Tester', avatar: '' },
+  };
+  const xhsNorm = parse.normalize(xhsRaw);
+  assert.equal(xhsNorm.title, xhsRaw.title);
+  assert.equal(xhsNorm.desc, xhsRaw.desc);
+  assert.equal(parse.composePostText(xhsNorm), `${xhsRaw.title}\n\n${xhsRaw.desc}`);
+  assert.equal(parse.normalize({ title: 'Same', desc: 'Same' }).desc, '');
+  const xhsMarkup = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ResultBody, { result: { platform: 'xiaohongshu', source: 'https://xhslink.cn/o/2jUmYTjFHP3', data: xhsNorm } })));
+  for (const token of ['正文', '不用熬夜内卷', '复制文案', '下载文案', '原图 01', xhsImg]) {
+    assert.ok(xhsMarkup.includes(token), 'Missing Xiaohongshu markup token: ' + token);
+  }
+  assert.ok(!xhsMarkup.includes('>封面<'), 'Duplicate cover row should be omitted when cover equals images[0]');
+
+  console.log('PASS: duration, complete/split result markup, download links, YouTube URL forms, upstream error propagation, Xiaohongshu post text & gallery downloads');
 })().catch(error => { console.error(error); process.exitCode = 1; });

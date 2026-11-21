@@ -398,6 +398,9 @@ class XiaohongshuParser
             $coverUrl = 'https://sns-img-hw.xhscdn.com/' . $note['cover']['fileId'] . '?imageView2/2/w/0/format/jpg';
         }
 
+        $rawTime = $note['time'] ?? ($note['lastUpdateTime'] ?? '');
+        $publishTime = is_numeric($rawTime) && (int)$rawTime > 0 ? (string)(int)$rawTime : '';
+
         $result = [
             'type' => $type, // video, image, live
             'title' => $note['title'] ?? '',
@@ -409,6 +412,7 @@ class XiaohongshuParser
             ],
             'cover' => $this->processImageUrl($coverUrl),
             'url' => null,
+            'publish_time' => $publishTime,
             'images' => [],
             'live_photo' => [] // 实况图
         ];

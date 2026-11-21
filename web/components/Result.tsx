@@ -1,15 +1,48 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowDown, Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { ArrowDown, Check, Copy, FileText } from "lucide-react";
+import { useState, type MouseEvent } from "react";
 import { useI18n } from "@/lib/i18n";
-import { downloadUrl, formatDuration, type ParseResult } from "@/lib/parse";
+import { buildFilename, composePostText, downloadUrl, formatDuration, type ParseResult } from "@/lib/parse";
 import { useParser } from "@/lib/parser";
 import { platformById } from "@/lib/platforms";
 import { cn, EASE } from "./ui";
 
-interface Row { label: string; meta?: string; href: string }
+interface Row {
+  label: string;
+  meta?: string;
+  href?: string;
+  filename?: string;
+  directImage?: boolean;
+  onClick?: () => void;
+}
+
+const isProxiedUrl = (u: string) => u.startsWith("https://media.litcheng.com/") || u.includes("svproxyurl.php");
+
+function triggerBlobDownload(blob: Blob, filename: string) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+async function saveDirectImage(href: string, filename: string) {
+  try {
+    const res = await fetch(href, { referrerPolicy: "no-referrer" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const ext = (blob.type.split("/")[1] || "jpg").split(";")[0].replace("jpeg", "jpg");
+    const finalName = filename.replace(/\.[^.]+$/, `.${ext}`);
+    triggerBlobDownload(blob, finalName);
+  } catch {
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
+}
 
 export function ResultSection() {
   const { result } = useParser();
@@ -34,7 +67,13 @@ function ResultBody({ result }: { result: ParseResult }) {
   const { t, lang } = useI18n();
   const { platform: pid, data: d } = result;
   const platform = platformById(pid);
-  const [copied, setCopied] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedText, setCopiedText] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const desc = d.desc ?? "";
+  const fullText = composePostText(d);
+  const longDesc = desc.length > 260 || desc.split("\n").length > 8;
 
   const facts = [
     [t.result.type, t.types[d.type]],
@@ -43,6 +82,12 @@ function ResultBody({ result }: { result: ParseResult }) {
     [t.result.duration, formatDuration(d.duration)],
     [t.result.size, d.size_label],
   ].filter(([, v]) => v);
+
+  const saveText = () => {
+    if (!fullText) return;
+    const blob = new Blob([fullText], { type: "text/plain;charset=utf-8" });
+    triggerBlobDownload(blob, buildFilename(d.title || platform.id, "txt"));
+  };
 
   const rows: Row[] = [];
   if (d.type === "video" && d.url) {
@@ -55,19 +100,62 @@ function ResultBody({ result }: { result: ParseResult }) {
   const split = d.type === "video" && !d.url && d.requires_merge;
   if (split && d.video_url) rows.push({ label: t.result.videoOnly, meta: d.quality, href: downloadUrl(d.video_url, pid, "video") });
   if (split && d.audio_url) rows.push({ label: t.result.audioOnly, href: downloadUrl(d.audio_url, pid, "video") });
-  if (d.cover) rows.push({ label: t.result.cover, href: downloadUrl(d.cover, pid, "image") });
+  // 图集原图直接列入下载清单
+  if (d.images.length > 0 && d.type !== "live") {
+    d.images.forEach((src, i) => {
+      const href = downloadUrl(src, pid, "image");
+      rows.push({
+        label: t.result.imageIndex(i + 1),
+        href,
+        directImage: !isProxiedUrl(href),
+        filename: buildFilename(`${d.title || platform.id}_${String(i + 1).padStart(2, "0")}`, "jpg"),
+      });
+    });
+  }
+  if (d.cover && !d.images.includes(d.cover)) {
+    const href = downloadUrl(d.cover, pid, "image");
+    rows.push({
+      label: t.result.cover,
+      href,
+      directImage: !isProxiedUrl(href),
+      filename: buildFilename(`${d.title || platform.id}_cover`, "jpg"),
+    });
+  }
   if (d.music.url) rows.push({ label: t.result.music, meta: [d.music.title, d.music.author].filter(Boolean).join(" — "), href: d.music.url });
+  if (fullText && (desc || d.type === "image")) {
+    rows.push({ label: t.result.downloadText, meta: "TXT", onClick: saveText });
+  }
 
-  const copy = async () => {
+  const copyLink = async () => {
     if (!d.url) return;
     try { await navigator.clipboard.writeText(d.url); } catch { window.prompt(t.result.copy, d.url); }
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+    setCopiedLink(true);
+    window.setTimeout(() => setCopiedLink(false), 1600);
   };
+
+  const copyText = async () => {
+    if (!fullText) return;
+    try { await navigator.clipboard.writeText(fullText); } catch { window.prompt(t.result.copyText, fullText); }
+    setCopiedText(true);
+    window.setTimeout(() => setCopiedText(false), 1600);
+  };
+
+  const handleImageClick = (href: string, filename: string, directImage?: boolean) => (e: MouseEvent<HTMLAnchorElement>) => {
+    if (!directImage) return;
+    e.preventDefault();
+    void saveDirectImage(href, filename);
+  };
+
+  const galleryClass =
+    d.images.length === 1
+      ? "max-w-xl"
+      : d.images.length === 2
+        ? "columns-2 gap-3"
+        : "columns-2 gap-3 md:columns-3";
 
   return (
     <div className="wrap grid-12 section-y !pt-16 md:!pt-24">
-      {/* 媒体 */}
+      {/* 媒体与正文 */}
       <div className="col-span-full md:col-span-7">
         {d.type === "video" && (d.url || (split && d.video_url)) && (
           <div className="bg-[#0b0b0b]">
@@ -83,20 +171,26 @@ function ResultBody({ result }: { result: ParseResult }) {
         )}
 
         {d.images.length > 0 && (
-          <ul className="columns-2 gap-3 md:columns-3">
-            {d.images.map((src, i) => (
-              <li key={src + i} className="group relative mb-3 break-inside-avoid overflow-hidden bg-surface">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={downloadUrl(src, pid, "image", false)} alt="" loading="lazy" referrerPolicy="no-referrer" className="block w-full transition-transform duration-700 group-hover:scale-[1.03]" />
-                <a
-                  href={downloadUrl(src, pid, "image")} target="_blank" rel="noopener noreferrer"
-                  className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-bg/90 px-3 py-2 text-xs opacity-0 transition-opacity duration-300 group-hover:opacity-100 focus:opacity-100"
-                >
-                  <span className="t-num">{String(i + 1).padStart(2, "0")}</span>
-                  <ArrowDown size={14} strokeWidth={1.5} />
-                </a>
-              </li>
-            ))}
+          <ul className={galleryClass}>
+            {d.images.map((src, i) => {
+              const href = downloadUrl(src, pid, "image");
+              const direct = !isProxiedUrl(href);
+              const filename = buildFilename(`${d.title || platform.id}_${String(i + 1).padStart(2, "0")}`, "jpg");
+              return (
+                <li key={src + i} className="group relative mb-3 break-inside-avoid overflow-hidden bg-surface">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={downloadUrl(src, pid, "image", false)} alt="" loading="lazy" referrerPolicy="no-referrer" className="block w-full transition-transform duration-700 group-hover:scale-[1.03]" />
+                  <a
+                    href={href} target="_blank" rel="noopener noreferrer" download={filename}
+                    onClick={handleImageClick(href, filename, direct)}
+                    className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-bg/90 px-3 py-2 text-xs opacity-100 transition-opacity duration-300 md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
+                  >
+                    <span className="t-num">{String(i + 1).padStart(2, "0")}</span>
+                    <ArrowDown size={14} strokeWidth={1.5} />
+                  </a>
+                </li>
+              );
+            })}
           </ul>
         )}
 
@@ -117,6 +211,36 @@ function ResultBody({ result }: { result: ParseResult }) {
               </li>
             ))}
           </ul>
+        )}
+
+        {desc && (
+          <div className="mt-10 border-t border-line pt-8">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <p className="t-label">{t.result.content}</p>
+              <div className="flex items-center gap-5">
+                <button
+                  type="button"
+                  onClick={copyText}
+                  className={cn("link-quiet inline-flex items-center gap-1.5", copiedText && "!text-accent")}
+                >
+                  {copiedText ? <Check size={14} /> : <Copy size={14} strokeWidth={1.5} />}
+                  {copiedText ? t.result.copiedText : t.result.copyText}
+                </button>
+                <button type="button" onClick={saveText} className="link-quiet inline-flex items-center gap-1.5">
+                  <FileText size={14} strokeWidth={1.5} />
+                  {t.result.downloadText}
+                </button>
+              </div>
+            </div>
+            <p className={cn("mt-5 whitespace-pre-wrap break-words text-[0.9375rem] leading-[1.9] text-fg/90 select-text", longDesc && !expanded && "line-clamp-6")}>
+              {desc}
+            </p>
+            {longDesc && (
+              <button type="button" onClick={() => setExpanded((v) => !v)} className="link-quiet mt-4">
+                {expanded ? t.result.collapse : t.result.expand}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -154,31 +278,59 @@ function ResultBody({ result }: { result: ParseResult }) {
             <p className="t-label mt-10">{t.result.downloads}</p>
             <ul className="mt-3 border-t border-line">
               {rows.map((r, i) => (
-                <li key={r.href + i}>
-                  <a
-                    href={r.href} target="_blank" rel="noopener noreferrer" download
-                    className="group flex items-center gap-4 border-b border-line py-4"
-                  >
-                    <span className="t-num w-6 text-xs text-muted">{String(i + 1).padStart(2, "0")}</span>
-                    <span className="flex-1 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:translate-x-1.5">
-                      {r.label}
-                      {r.meta && <span className="ml-3 text-xs text-muted">{r.meta}</span>}
-                    </span>
-                    <span className="arrow-dot group-hover:border-fg group-hover:bg-fg group-hover:text-bg">
-                      <ArrowDown size={15} strokeWidth={1.5} />
-                    </span>
-                  </a>
+                <li key={(r.href ?? r.label) + i}>
+                  {r.onClick ? (
+                    <button
+                      type="button"
+                      onClick={r.onClick}
+                      className="group flex w-full items-center gap-4 border-b border-line py-4 text-left"
+                    >
+                      <span className="t-num w-6 text-xs text-muted">{String(i + 1).padStart(2, "0")}</span>
+                      <span className="flex-1 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:translate-x-1.5">
+                        {r.label}
+                        {r.meta && <span className="ml-3 text-xs text-muted">{r.meta}</span>}
+                      </span>
+                      <span className="arrow-dot group-hover:border-fg group-hover:bg-fg group-hover:text-bg">
+                        <ArrowDown size={15} strokeWidth={1.5} />
+                      </span>
+                    </button>
+                  ) : (
+                    <a
+                      href={r.href} target="_blank" rel="noopener noreferrer" download={r.filename ?? true}
+                      onClick={r.href && r.filename ? handleImageClick(r.href, r.filename, r.directImage) : undefined}
+                      className="group flex items-center gap-4 border-b border-line py-4"
+                    >
+                      <span className="t-num w-6 text-xs text-muted">{String(i + 1).padStart(2, "0")}</span>
+                      <span className="flex-1 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:translate-x-1.5">
+                        {r.label}
+                        {r.meta && <span className="ml-3 text-xs text-muted">{r.meta}</span>}
+                      </span>
+                      <span className="arrow-dot group-hover:border-fg group-hover:bg-fg group-hover:text-bg">
+                        <ArrowDown size={15} strokeWidth={1.5} />
+                      </span>
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
           </>
         )}
 
-        {d.url && (
-          <button onClick={copy} className={cn("link-quiet mt-6 inline-flex items-center gap-2", copied && "!text-accent")}>
-            {copied ? <Check size={14} /> : <Copy size={14} strokeWidth={1.5} />}
-            {copied ? t.result.copied : t.result.copy}
-          </button>
+        {(d.url || fullText) && (
+          <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
+            {d.url && (
+              <button type="button" onClick={copyLink} className={cn("link-quiet inline-flex items-center gap-2", copiedLink && "!text-accent")}>
+                {copiedLink ? <Check size={14} /> : <Copy size={14} strokeWidth={1.5} />}
+                {copiedLink ? t.result.copied : t.result.copy}
+              </button>
+            )}
+            {fullText && (
+              <button type="button" onClick={copyText} className={cn("link-quiet inline-flex items-center gap-2", copiedText && "!text-accent")}>
+                {copiedText ? <Check size={14} /> : <Copy size={14} strokeWidth={1.5} />}
+                {copiedText ? t.result.copiedText : t.result.copyText}
+              </button>
+            )}
+          </div>
         )}
         {split && <p className="mt-8 text-xs leading-relaxed text-accent">{t.result.mergeTip}</p>}
         <p className="mt-8 text-xs leading-relaxed text-muted">{t.result.tip}</p>

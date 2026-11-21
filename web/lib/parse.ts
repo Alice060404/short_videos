@@ -13,6 +13,7 @@ export interface Music { title?: string; author?: string; url?: string; cover?: 
 export interface ParsedMedia {
   type: MediaType;
   title: string;
+  desc: string;
   author: Author;
   cover: string;
   url: string | null;
@@ -77,9 +78,14 @@ export function normalize(d: any): ParsedMedia {
   const live: LivePhoto[] = Array.isArray(d.live_photo) ? d.live_photo : [];
   let type: MediaType = d.type;
   if (!["video", "image", "live"].includes(type)) type = url ? "video" : live.length ? "live" : "image";
+  const rawTitle = str(d.title).trim();
+  const rawDesc = str(d.desc ?? d.description).trim();
+  const title = rawTitle || rawDesc;
+  const desc = rawDesc && rawDesc !== title ? rawDesc : "";
   return {
     type,
-    title: str(d.title || d.desc || d.description),
+    title,
+    desc,
     author,
     cover: httpsify(d.cover),
     url,
@@ -95,6 +101,24 @@ export function normalize(d: any): ParsedMedia {
     video_url: optUrl(d.video_url),
     audio_url: optUrl(d.audio_url),
   };
+}
+
+/** 组合可供复制或导出的完整帖子文案（标题 + 正文） */
+export function composePostText(d: Pick<ParsedMedia, "title"> & { desc?: string }): string {
+  const title = str(d.title).trim();
+  const desc = str(d.desc).trim();
+  if (title && desc && desc !== title) return `${title}\n\n${desc}`;
+  return title || desc;
+}
+
+/** 生成安全的本地导出文件名（去掉路径非法字符） */
+export function buildFilename(title: string, ext: string, fallback = "post"): string {
+  const clean = str(title)
+    .replace(/[\\/:*?"<>|\r\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 48);
+  return `${clean || fallback}.${ext}`;
 }
 
 export async function parseShare(text: string): Promise<ParseResult> {
