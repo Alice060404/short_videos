@@ -10,6 +10,7 @@ $xhsHosts=svEntryPolicies()['/api/xiaohongshu/xhsjx.php'][1];
 check(svInputUrl('每晚2小时... https://xhslink.cn/o/2jUmYTjFHP3 存下链接，去【小红书】阅读全文~',$xhsHosts)==='https://xhslink.cn/o/2jUmYTjFHP3','xhslink.cn share text rejected');
 foreach(['https://xhslink.com/a/abc123','https://www.xiaohongshu.com/explore/699e8cde000000000d00a3a1','https://www.rednote.com/discovery/item/699e8cde000000000d00a3a1','https://r.rednote.com/o/2jUmYTjFHP3'] as $u)check(svInputUrl($u,$xhsHosts)===$u,'Valid Xiaohongshu/RedNote URL rejected: '.$u);
 foreach(['https://xhslink.cn.evil.test/o/2jUmYTjFHP3','https://rednote.com.evil.test/o/2jUmYTjFHP3','https://evil-xhslink.cn/o/2jUmYTjFHP3','https://xhslink.cn:8080/o/2jUmYTjFHP3'] as $u){try{svInputUrl($u,$xhsHosts);throw new LogicException('Bad Xiaohongshu URL accepted');}catch(RuntimeException $e){check($e->getCode()===400,'Wrong error for bad Xiaohongshu URL');}}
+foreach(['https://xhslink.cn.evil.test/o/a','https://rednote.com.evil.test/a','https://rednotecdn.com.evil.test/a'] as $u){try{svSafeTarget($u);throw new LogicException('Bad outbound target accepted');}catch(RuntimeException $e){check($e->getCode()===400,'Wrong error for bad outbound target');}}
 $key='test-only-signing-secret-not-used-in-production';$exp=1800000000;$target='https://v.douyinvod.com/a?x=1&y=2';
 $u=svSignMedia($target,'douyin',$key,$exp);parse_str(parse_url($u,PHP_URL_QUERY),$q);
 check(base64_decode($q['proxyurl'])===$target,'Signed target changed');
