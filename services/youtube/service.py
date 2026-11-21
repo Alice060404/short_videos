@@ -1,5 +1,7 @@
 """Loopback-only yt-dlp metadata service (YouTube, X/Twitter). No media downloading or account cookies."""
 import argparse
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import html
 import json
 import multiprocessing
@@ -176,13 +178,20 @@ def x_video(media):
 
 
 def x_timestamp(value):
-    if not value:
+    if not isinstance(value, str) or not value.strip():
         return ""
+    raw = value.strip()
     try:
-        from yt_dlp.utils import unified_timestamp
-        return str(unified_timestamp(value) or "")
-    except Exception:
-        return ""
+        dt = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        try:
+            iso = raw[:-1] + "+00:00" if raw.endswith("Z") else raw
+            dt = datetime.fromisoformat(iso)
+        except ValueError:
+            return ""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return str(int(dt.timestamp()))
 
 
 def normalize_x(status, twid):

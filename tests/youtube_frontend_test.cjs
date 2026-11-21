@@ -110,6 +110,13 @@ function load(file) {
   for (const token of ['src="' + xVideo + '"', 'href="' + xVideo + '"', '视频 2 · 720P', '原图 01', xImg.replace('&', '&amp;'), 'X（推特）']) {
     assert.ok(xMarkup.includes(token), 'Missing X markup token: ' + token);
   }
+  const xGalleryMarkup = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ResultBody, { result: { platform: 'x', source: 'https://x.com/a/status/2', data: parse.normalize({
+      type: 'image', title: 'Photo post', desc: 'Photo post\nsecond line', cover: xImg, images: [xImg], url: null,
+      author: { name: 'Osh', id: 'oshtru', avatar: '' }, publish_time: '1665025050' }) } })));
+  for (const token of ['原图 01', '2022-10-06', 'second line', '下载文案']) {
+    assert.ok(xGalleryMarkup.includes(token), 'Missing X gallery markup token: ' + token);
+  }
 
   console.log('PASS: duration, complete/split result markup, download links, YouTube URL forms, upstream error propagation, Xiaohongshu post text & gallery downloads, X detection & mixed media');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -122,6 +122,7 @@ class XTests(unittest.TestCase):
         self.assertEqual(data["desc"], "gm & hi https://example.com/a")
         self.assertEqual(data["author"], {"name": "Osh", "id": "oshtru", "avatar": "https://pbs.twimg.com/profile_images/1/a_400x400.jpg"})
         self.assertEqual(data["publish_time"], "1665025050")
+        self.assertEqual(service.x_timestamp("2022-10-06T02:57:30.000Z"), "1665025050")
         self.assertFalse(data["requires_merge"])
 
     def test_photo_post_and_quoted_fallback(self):
