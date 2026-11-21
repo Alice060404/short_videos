@@ -3,6 +3,7 @@ require_once __DIR__ . '/safe_http.php';
 function svEntryPolicies(): array {
     return [
         '/api/youtube/youtube.php'=>['youtube',['youtube.com','youtu.be']],
+        '/api/x/x.php'=>['x',['x.com','twitter.com']],
         '/api/douyin/douyin.php'=>['douyin',['douyin.com','iesdouyin.com']],
         '/api/kuaishou/ksjx.php'=>['kuaishou',['kuaishou.com','gifshow.com']],
         '/api/xiaohongshu/xhsjx.php'=>['xiaohongshu',['xiaohongshu.com','xhslink.com','xhslink.cn','rednote.com']],

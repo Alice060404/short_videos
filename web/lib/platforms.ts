@@ -10,7 +10,8 @@ export type PlatformId =
   | "pipixia"
   | "pipigx"
   | "zuiyou"
-  | "youtube";
+  | "youtube"
+  | "x";
 
 export interface Platform {
   id: PlatformId;
@@ -35,6 +36,8 @@ export const PLATFORMS: Platform[] = [
   { id: "pipigx", glyph: "搞", name: { zh: "皮皮搞笑", en: "Pipigx" }, keywords: ["ippzone", "pipigx"], path: "pipigx.php", types: ["video"] },
   { id: "zuiyou", glyph: "右", name: { zh: "最右", en: "Zuiyou" }, keywords: ["izuiyou"], path: "zuiyou.php", types: ["video"] },
   { id: "youtube", glyph: "油", name: { zh: "YouTube", en: "YouTube" }, keywords: ["youtube.com", "youtu.be"], path: "youtube/youtube.php", types: ["video"] },
+  // "://x.com" 带边界，避免误匹配 pipix.com 等以 x.com 结尾的域名
+  { id: "x", glyph: "推", name: { zh: "X（推特）", en: "X (Twitter)" }, keywords: ["://x.com", ".x.com/", "twitter.com"], path: "x/x.php", types: ["video", "image"] },
 ];
 
 export const platformById = (id: PlatformId) => PLATFORMS.find((p) => p.id === id)!;

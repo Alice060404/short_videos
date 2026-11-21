@@ -7,6 +7,9 @@ check(svPublicIp('1.1.1.1'),'Public IP rejected');
 foreach(['https://evil.test/a','https://douyin.com.evil.test/a','https://a:b@douyin.com/a','https://douyin.com:8080/a','file:///etc/passwd'] as $u){try{svInputUrl($u,['douyin.com']);throw new LogicException('Bad URL accepted');}catch(RuntimeException $e){check($e->getCode()===400,'Wrong error');}}
 check(svInputUrl('分享 https://v.douyin.com/abc/',['douyin.com'])==='https://v.douyin.com/abc/','Share text rejected');
 $xhsHosts=svEntryPolicies()['/api/xiaohongshu/xhsjx.php'][1];
+$xHosts=svEntryPolicies()['/api/x/x.php'][1];
+foreach(['https://x.com/a/status/1','https://twitter.com/a/status/1','https://mobile.x.com/a/status/1'] as $u)check(svInputUrl($u,$xHosts)===$u,'Valid X URL rejected: '.$u);
+foreach(['https://pipix.com/a/status/1','https://x.com.evil.test/a/status/1','https://eviltwitter.com/a/status/1'] as $u){try{svInputUrl($u,$xHosts);throw new LogicException('Bad X URL accepted');}catch(RuntimeException $e){check($e->getCode()===400,'Wrong error for bad X URL');}}
 check(svInputUrl('每晚2小时... https://xhslink.cn/o/2jUmYTjFHP3 存下链接，去【小红书】阅读全文~',$xhsHosts)==='https://xhslink.cn/o/2jUmYTjFHP3','xhslink.cn share text rejected');
 foreach(['https://xhslink.com/a/abc123','https://www.xiaohongshu.com/explore/699e8cde000000000d00a3a1','https://www.rednote.com/discovery/item/699e8cde000000000d00a3a1','https://r.rednote.com/o/2jUmYTjFHP3'] as $u)check(svInputUrl($u,$xhsHosts)===$u,'Valid Xiaohongshu/RedNote URL rejected: '.$u);
 foreach(['https://xhslink.cn.evil.test/o/2jUmYTjFHP3','https://rednote.com.evil.test/o/2jUmYTjFHP3','https://evil-xhslink.cn/o/2jUmYTjFHP3','https://xhslink.cn:8080/o/2jUmYTjFHP3'] as $u){try{svInputUrl($u,$xhsHosts);throw new LogicException('Bad Xiaohongshu URL accepted');}catch(RuntimeException $e){check($e->getCode()===400,'Wrong error for bad Xiaohongshu URL');}}

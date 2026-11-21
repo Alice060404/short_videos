@@ -101,6 +101,8 @@ If any rights holder believes there is infringement or improper use, please cont
 | **Pipigx** (Pipi Comedy) | `api/pipigx.php` | Watermark-free video, cover | Cookie-free | ✅ Active |
 | **Pipixia** (Pipi Shrimp) | `api/ppxia.php` | Watermark-free video, gallery images, cover, author info | Cookie-free | ✅ Active |
 | **Zuiyou** | `api/zuiyou.php` | Watermark-free video, cover, author info | Cookie-free | ✅ Active |
+| **YouTube** | `api/youtube/youtube.php` | Watch & Shorts direct streams, split video/audio streams, cover, author info (local yt-dlp service) | Cookie-free | ✅ Active |
+| **X (Twitter)** | `api/x/x.php` | Post video/GIF MP4 direct links, multi-video backups, original photos (`?name=orig`), mixed video+image posts & full post text (local yt-dlp service) | Cookie-free | ✅ Active |
 | **NetEase Cloud Music** | `api/wyy.py` (Python/Flask) | Song direct-link parsing | Cookie-free | ✅ Active |
 | **Doubao AI** Video/Chat Images | `api/doubao/video/api.php` | Watermark-free AI-generated video links | Cookie-free | ✅ Active |
 | **Jimeng AI** Video | `api/jimengai/index.php` | Watermark-free AI-generated video links | Cookie-free | ✅ Active |

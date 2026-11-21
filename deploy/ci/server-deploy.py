@@ -365,7 +365,7 @@ def verify_site_live() -> None:
     if code != 200 or ("Unmarked" not in body and "无痕" not in body):
         raise RuntimeError(f"Homepage smoke check failed: HTTP {code}")
 
-    for endpoint in ("/api/xiaohongshu/xhsjx.php", "/api/youtube/youtube.php"):
+    for endpoint in ("/api/xiaohongshu/xhsjx.php", "/api/youtube/youtube.php", "/api/x/x.php"):
         code, body, _ = origin_request(endpoint)
         payload = json.loads(body)
         if code != 400 or payload.get("code") != 400:

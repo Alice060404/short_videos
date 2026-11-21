@@ -57,6 +57,11 @@ $platforms = [
         'keywords' => ['izuiyou'],
         'path' => 'zuiyou.php',
     ],
+    // 用 "://x.com" 等带边界的关键词，避免误匹配 pipix.com 之类以 x.com 结尾的域名
+    'x' => [
+        'keywords' => ['://x.com', '.x.com/', 'twitter.com'],
+        'path' => 'x/x.php',
+    ],
 ];
 
 // 转发请求超时（秒）

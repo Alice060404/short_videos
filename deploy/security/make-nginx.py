@@ -66,7 +66,7 @@ server='''server {
         add_header Cache-Control no-store always;
         return 307 https://media.litcheng.com/$is_args$args;
     }
-    location ~ ^/api/(douyin/douyin|kuaishou/ksjx|xiaohongshu/xhsjx|bilibili/bilibili|youtube/youtube|weibo|toutiao|ppxia|pipigx|zuiyou)\\.php$ {
+    location ~ ^/api/(douyin/douyin|kuaishou/ksjx|xiaohongshu/xhsjx|bilibili/bilibili|youtube/youtube|x/x|weibo|toutiao|ppxia|pipigx|zuiyou)\\.php$ {
         try_files $uri =404;
         limit_req zone=short_videos_api burst=3 nodelay;
         limit_req zone=sv_api_total burst=10 nodelay;

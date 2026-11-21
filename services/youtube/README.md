@@ -1,6 +1,6 @@
-# YouTube 本地解析接口
+# YouTube 与 X（Twitter）本地解析接口
 
-已接入网页并正式部署到 us，Nginx 和出站规则已配套更新；YouTube 媒体不通过现有 Cloudflare Worker。需要 Python 3.10+、PHP 8+（curl）及 Node.js >=22 或受支持的 Deno。当前固定 yt-dlp 2026.10.21，以兼容 us 的 Python 3.10；2026.10.26 要求 Python >=3.11，不能直接用于当前服务器。部署说明见 [部署配置](../../deploy/youtube/README.md)，验收见 [部署记录](../../docs/YouTube部署记录-2026-11-08.md)。
+已接入网页并共享本机 `yt-dlp` 解析服务（`services/youtube/service.py`，监听 `127.0.0.1:8765`）；YouTube 与 X 媒体直链均不通过现有 Cloudflare Worker。需要 Python 3.10+、PHP 8+（curl）及 Node.js >=22 或受支持的 Deno。当前固定 yt-dlp 2026.10.21，以兼容 us 的 Python 3.10；2026.10.26 要求 Python >=3.11，不能直接用于当前服务器。部署说明见 [部署配置](../../deploy/youtube/README.md)，验收见 [部署记录](../../docs/YouTube部署记录-2026-11-08.md)。
 
 ## 启动
 
@@ -18,19 +18,27 @@ python -m venv .venv-youtube
 php -S 127.0.0.1:8088 -t .
 ```
 
-接口：`GET /api/youtube/youtube.php?url=<URL编码后的分享链接>`，亦支持 POST 表单 `url`。
+接口：
+- YouTube：`GET /api/youtube/youtube.php?url=<URL编码后的分享链接>`（亦支持 POST 表单 `url`）
+- X（Twitter）：`GET /api/x/x.php?url=<URL编码后的帖子链接>`（亦支持 POST 表单 `url`）
 
 ```powershell
 Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8088/api/youtube/youtube.php -Body @{url='https://youtu.be/jNQXAC9IVRw'}
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8088/api/x/x.php -Body @{url='https://x.com/oshtru/status/1577855540407197696'}
 ```
 
-Python 服务固定仅监听 `127.0.0.1:8765`，PHP 不执行系统命令。服务 `/health` 返回 yt-dlp 版本。不要将该内部服务公开到公网。
+Python 服务固定仅监听 `127.0.0.1:8765`，PHP 不执行系统命令，由 `api/lib/ytdlp_service.php` 统一通过 `platform`（`youtube` / `x`）调用。服务 `/health` 返回 yt-dlp 版本。不要将该内部服务公开到公网。
 
-聚合入口 `api/sv.php` 已注册 YouTube；PHP 内置单进程服务器不能转发请求给自身，故本地用单平台接口测试。聚合入口需在多进程 Web 环境及已有可信 Host 配置下使用。
+聚合入口 `api/sv.php` 已注册 YouTube 与 X；PHP 内置单进程服务器不能转发请求给自身，故本地用单平台接口测试。聚合入口需在多进程 Web 环境及已有可信 Host 配置下使用。
 
 ## 输出与范围
 
-- 支持普通 watch 链接、youtu.be 短链接、Shorts 和 embed 单视频地址；会重建规范 URL，不跟随用户提供的任意跳转，也不处理列表参数。
+- **YouTube**：支持普通 watch 链接、youtu.be 短链接、Shorts 和 embed 单视频地址；会重建规范 URL，不跟随用户提供的任意跳转，也不处理列表参数。
+- **X（Twitter）**：支持 `x.com`、`twitter.com`、`mobile.x.com`、`mobile.twitter.com` 单条帖子链接（`/用户名/status/ID`、`/i/status/ID`、`/i/web/status/ID`，兼容末尾 `/photo/1` 或 `/video/1`）；通过 `yt-dlp` 的 `TwitterIE` 获取访客令牌并提取单帖数据：
+  - 视频 / GIF 帖子：筛选 `video.twimg.com` 的带音画 MP4 直链（按分辨率与码率择优），多视频帖子其余视频写入 `video_backup`；
+  - 图文 / 图集帖子：提取 `pbs.twimg.com` 原图（`?name=orig`）写入 `images`；
+  - 视频与图片混排帖子：同时返回主视频 `url` 与原图列表 `images`；
+  - 引用帖与纯文字帖：若主帖无媒体则自动回退引用帖媒体，展开正文中的 `t.co` 链接并剔除末尾媒体短链。
 - 统一返回 `{code,msg,data}`；data 包含 title、cover、author、duration、quality 等现有字段，以及 formats、requires_merge、video_url、audio_url。
 - 有带音频的完整格式时，`url` 返回该格式（优先 MP4），`requires_merge=false`。
 - 仅有分离格式时，`url=null`、`requires_merge=true`，通过 video_url/audio_url 获取两个流；formats 提供格式、编码和清晰度。网页显示“视频（无声）”“音频”和合并提示，预览仅播放视频流，不自动合并。

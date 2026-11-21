@@ -12,9 +12,9 @@ class DeploymentTests(unittest.TestCase):
         server = next(n.value for n in ast.walk(tree) if isinstance(n, ast.Constant)
                       and isinstance(n.value, str) and n.value.startswith("server {"))
         pattern = re.search(r"location ~ (\^/api/\(.+?\)\\.php\$)", server)[1]
-        for path in ("youtube/youtube", "douyin/douyin", "weibo", "bilibili/bilibili"):
+        for path in ("youtube/youtube", "x/x", "douyin/douyin", "weibo", "bilibili/bilibili"):
             self.assertIsNotNone(re.fullmatch(pattern, "/api/" + path + ".php"))
-        for path in ("/api/youtube/other.php", "/api/sv.php", "/api/youtube/youtube.php/extra"):
+        for path in ("/api/youtube/other.php", "/api/x/other.php", "/api/sv.php", "/api/youtube/youtube.php/extra"):
             self.assertIsNone(re.fullmatch(pattern, path))
         self.assertIn("location ~ ^/api/ { return 404; }", server)
 

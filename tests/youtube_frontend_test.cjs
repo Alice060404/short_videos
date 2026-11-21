@@ -91,5 +91,25 @@ function load(file) {
   }
   assert.ok(!xhsMarkup.includes('>封面<'), 'Duplicate cover row should be omitted when cover equals images[0]');
 
-  console.log('PASS: duration, complete/split result markup, download links, YouTube URL forms, upstream error propagation, Xiaohongshu post text & gallery downloads');
+  // X: platform detection must not swallow look-alike hosts, and mixed posts show video + photos
+  const platforms = load(path.join(root, 'lib/platforms.ts'));
+  for (const url of ['https://x.com/oshtru/status/1577855540407197696', 'https://twitter.com/a/status/1?s=20', 'https://mobile.x.com/a/status/1']) {
+    assert.equal(platforms.matchPlatform(url)?.id, 'x', url);
+  }
+  assert.equal(platforms.matchPlatform('https://h5.pipix.com/s/abc/')?.id, 'pipixia');
+  assert.equal(platforms.matchPlatform('https://dropbox.com/a'), null);
+  const xVideo = 'https://video.twimg.com/11/vid/720x1280/high.mp4';
+  const xImg = 'https://pbs.twimg.com/media/AAA.jpg?name=orig';
+  response = { code: 200, data: { type: 'video', platform: 'x', title: 'gm', desc: 'gm & hi', url: xVideo, video_url: xVideo,
+    quality: '720P', duration: 12.5, cover: xImg, images: [xImg], video_backup: [{ label: '视频 2 · 720P', url: xVideo + '?2' }],
+    author: { name: 'Osh', id: 'oshtru', avatar: '' }, publish_time: '1665025050', requires_merge: false, audio_url: null } };
+  const xResult = await parse.parseShare('看看这个 https://x.com/oshtru/status/1577855540407197696?s=20');
+  assert.equal(xResult.platform, 'x');
+  const xMarkup = renderToStaticMarkup(React.createElement(I18nProvider, null,
+    React.createElement(ResultBody, { result: xResult })));
+  for (const token of ['src="' + xVideo + '"', 'href="' + xVideo + '"', '视频 2 · 720P', '原图 01', xImg.replace('&', '&amp;'), 'X（推特）']) {
+    assert.ok(xMarkup.includes(token), 'Missing X markup token: ' + token);
+  }
+
+  console.log('PASS: duration, complete/split result markup, download links, YouTube URL forms, upstream error propagation, Xiaohongshu post text & gallery downloads, X detection & mixed media');
 })().catch(error => { console.error(error); process.exitCode = 1; });

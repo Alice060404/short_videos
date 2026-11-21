@@ -24,7 +24,7 @@ const zh = {
     clear: "清空",
     pasteDenied: "浏览器没有允许读取剪贴板，请手动粘贴。",
     scroll: "Scroll to explore",
-    facts: "10 platforms · No cookie · No login",
+    facts: "11 platforms · No cookie · No login",
   },
   errors: {
     empty: "先粘贴一条分享链接。",
@@ -156,7 +156,7 @@ const en: Dict = {
     clear: "Clear",
     pasteDenied: "Clipboard access was denied. Please paste manually.",
     scroll: "Scroll to explore",
-    facts: "10 platforms · No cookie · No login",
+    facts: "11 platforms · No cookie · No login",
   },
   errors: {
     empty: "Paste a share link first.",

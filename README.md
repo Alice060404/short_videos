@@ -80,7 +80,7 @@
 
 ## 🌐 支持平台
 
-YouTube 已接入网页和 `api/youtube/youtube.php`，支持普通长视频及 Shorts 的元数据和媒体流解析，需要独立 Python/yt-dlp 服务。已部署到 us；分离音画提供独立下载链接和合并提示，不自动合并。启动方式和限制见 [YouTube 接口说明](services/youtube/README.md)，生产服务配置见 [部署说明](deploy/youtube/README.md)，验收及回滚信息见 [部署记录](docs/YouTube部署记录-2026-11-08.md)。
+YouTube 与 X（Twitter）已接入网页及 `api/youtube/youtube.php`、`api/x/x.php`，共享本机 Python/yt-dlp 服务（`services/youtube/service.py`）：YouTube 支持普通长视频及 Shorts 的元数据和媒体流解析（分离音画提供独立下载链接和合并提示，不自动合并）；X（Twitter）支持单条帖子的视频/GIF、图文原图（`?name=orig`）、视频图片混排与完整正文解析。启动方式和限制见 [yt-dlp 接口说明](services/youtube/README.md)，生产服务配置见 [部署说明](deploy/youtube/README.md)，验收及回滚信息见 [部署记录](docs/YouTube部署记录-2026-11-08.md)。
 
 > 抖音内容解析仅保留 **PHP 版**与 **Cloudflare Workers 版**两个整合版（视频/图集/实况统一入口）；主页批量解析为独立接口，需登录 Cookie。
 
@@ -98,6 +98,8 @@ YouTube 已接入网页和 `api/youtube/youtube.php`，支持普通长视频及 
 | **皮皮搞笑** | `api/pipigx.php` | 视频去水印、封面 | 免登录 | ✅ 可用 |
 | **皮皮虾** | `api/ppxia.php` | 视频去水印、图集图片、封面、作者信息 | 免登录 | ✅ 可用 |
 | **最右** | `api/zuiyou.php` | 视频去水印、封面、作者信息 | 免登录 | ✅ 可用 |
+| **YouTube** | `api/youtube/youtube.php` | 普通视频与 Shorts 直链、分离音画流、封面、作者信息（本机 yt-dlp 服务） | 免登录 | ✅ 可用 |
+| **X（Twitter）** | `api/x/x.php` | 帖子视频/GIF 直链、多视频备选、图文原图（`?name=orig`）、视频图片混排与完整正文（本机 yt-dlp 服务） | 免登录 | ✅ 可用 |
 | **网易云音乐** | `api/wyy.py`（Python/Flask） | 歌曲直链解析 | 免登录 | ✅ 可用 |
 | **豆包 AI** 视频/对话图片 | `api/doubao/video/api.php` | AI 生成视频无水印直链 | 免登录 | ✅ 可用 |
 | **即梦 AI** 视频 | `api/jimengai/index.php` | AI 生成视频无水印直链 | 免登录 | ✅ 可用 |
